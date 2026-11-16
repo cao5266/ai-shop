@@ -91,9 +91,15 @@ def guard(request: Request, bucket: str):
 
 
 # ---------------- 会话
+# 会话绑定的是 User-Agent，不是 IP：手机在 Wi-Fi 与流量之间切换时 IP 会变，但 UA 不变。
+# 这个绑定很弱（伪造 UA 就能绕过），它只是让「把密钥拷到别的客户端」多一道手续；限流仍然按 IP 做。
+def ua_tag(request: Request) -> str:
+    return hm("ua:" + request.headers.get("user-agent", ""), 6).hex()
+
+
 def new_session(request: Request) -> dict:
     exp = int(time.time()) + SESSION_TTL
-    payload = b64u(json.dumps({"e": exp, "i": hm("ip:" + client_ip(request), 6).hex(), "r": secrets.token_hex(6)},
+    payload = b64u(json.dumps({"e": exp, "u": ua_tag(request), "r": secrets.token_hex(6)},
                               separators=(",", ":")).encode())
     sid = payload + "." + b64u(hm("sid:" + payload, 16))
     return {"sid": sid, "key": b64(hm("key:" + sid)), "exp": exp, "ts": int(time.time())}
@@ -107,7 +113,7 @@ def session_key(request: Request, sid: str) -> bytes:
         info = json.loads(unb64u(payload))
         if info["e"] < time.time():
             raise HTTPException(401, "session_expired")
-        if info["i"] != hm("ip:" + client_ip(request), 6).hex():
+        if info["u"] != ua_tag(request):
             raise HTTPException(401, "session_expired")
     except HTTPException:
         raise

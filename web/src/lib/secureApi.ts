@@ -46,26 +46,25 @@ async function once<T>(path: string, s: Session, signal?: AbortSignal): Promise<
   return JSON.parse(dec.decode(plain)) as T
 }
 
-const RETRY = new Set(['session_expired', 'session_invalid', 'clock_skew', 'bad_signature'])
 const cache = new Map<string, { at: number; data: unknown }>()
 
+// 遇到 401（会话过期、时间偏差、网络切换后服务端不认等）就换一次会话，把原请求重发一次。
+// 只重试一次：第二次仍失败就把错误抛给页面，避免死循环。
 export async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
   const hit = cache.get(path)
   if (hit && Date.now() - hit.at < 30_000) return hit.data as T
-  let s = await getSession()
+  const used = await getSession()
+  let data: T
   try {
-    const data = await once<T>(path, s, signal)
-    cache.set(path, { at: Date.now(), data })
-    return data
+    data = await once<T>(path, used, signal)
   } catch (e) {
-    if (e instanceof ApiError && e.status === 401 && RETRY.has(e.code)) {
-      s = await getSession(true)
-      const data = await once<T>(path, s, signal)
-      cache.set(path, { at: Date.now(), data })
-      return data
-    }
-    throw e
+    if (!(e instanceof ApiError && e.status === 401) || signal?.aborted) throw e
+    // 并发请求同时失败时，别人可能已经换好了新会话，直接复用，不重复换
+    const fresh = session && session !== used ? session : await getSession(true)
+    data = await once<T>(path, fresh, signal)
   }
+  cache.set(path, { at: Date.now(), data })
+  return data
 }
 
 export const qs = (o: Record<string, string | number | undefined>) => {
