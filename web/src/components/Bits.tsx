@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircleIcon, SearchXIcon } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -8,13 +9,15 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
 import { cn } from '@/lib/utils'
-import { money } from '@/lib/format'
 
 export function Price({ value, currency = 'CNY', suffix = '起', className, big = false }: { value: number; currency?: string; suffix?: string; className?: string; big?: boolean }) {
+  const sym = currency === 'CNY' ? '¥' : currency + ' '
   return (
-    <span className={cn('price num inline-flex items-baseline gap-1 font-semibold tracking-tight', big ? 'text-3xl md:text-4xl' : 'text-2xl', className)}>
-      {money(value, currency)}
-      {suffix && <span className="text-sm font-normal text-muted-foreground">{suffix}</span>}
+    <span className={cn('inline-flex items-baseline gap-1', className)}>
+      <span className={cn('fig font-semibold leading-none text-price', big ? 'text-5xl md:text-6xl' : 'text-3xl')}>
+        <span className="mr-0.5 text-[0.62em] font-medium">{sym}</span>{new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value)}
+      </span>
+      {suffix && <span className="text-sm text-muted-foreground">{suffix}</span>}
     </span>
   )
 }
@@ -32,7 +35,7 @@ export function LowestBadge() {
 
 export function GoButton({ href, children = '去店铺', label, className }: { href: string; children?: string; label?: string; className?: string }) {
   return (
-    <Button asChild variant="secondary" size="lg" className={cn('h-10 px-5 text-[15px]', className)}>
+    <Button asChild variant="outline" size="lg" className={cn('h-10 border-foreground/20 bg-card px-5 text-[15px] hover:border-primary hover:bg-primary hover:text-primary-foreground', className)}>
       <a href={href} target="_blank" rel="noopener noreferrer nofollow" aria-label={label}>{children}</a>
     </Button>
   )
@@ -92,10 +95,10 @@ export function Pager({ page, total, size, href, onPage }: { page: number; total
       <PaginationContent>
         <PaginationItem>{page > 1 ? <PaginationPrevious href={href(page - 1)} onClick={go(page - 1)} /> : <PaginationPrevious aria-disabled="true" className="pointer-events-none opacity-50" tabIndex={-1} />}</PaginationItem>
         {nums.map((n, i) => (
-          <PaginationItem key={n} className="contents">
+          <Fragment key={n}>
             {i > 0 && n - nums[i - 1] > 1 && <PaginationItem><PaginationEllipsis /></PaginationItem>}
             <PaginationItem><PaginationLink href={href(n)} isActive={n === page} onClick={go(n)} aria-label={`第 ${n} 页`}>{n}</PaginationLink></PaginationItem>
-          </PaginationItem>
+          </Fragment>
         ))}
         <PaginationItem>{page < pages ? <PaginationNext href={href(page + 1)} onClick={go(page + 1)} /> : <PaginationNext aria-disabled="true" className="pointer-events-none opacity-50" tabIndex={-1} />}</PaginationItem>
       </PaginationContent>

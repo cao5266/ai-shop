@@ -18,7 +18,7 @@ export function SiteHeader() {
   const showSearch = pathname !== '/' && pathname !== '/shops'
   return (
     <header className="sticky top-0 z-30 border-b bg-background">
-      <div className="mx-auto flex h-16 w-full max-w-[1120px] items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-16 w-full max-w-[1200px] items-center gap-3 px-4 sm:px-6">
         <Logo />
         {showSearch && <div className="hidden max-w-md flex-1 md:block"><SearchInput /></div>}
         <nav aria-label="主导航" className="ml-auto hidden items-center gap-1 md:flex">
@@ -58,7 +58,7 @@ export function SiteHeader() {
 export function SiteFooter() {
   return (
     <footer className="border-t">
-      <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-2 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:justify-between sm:px-6">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:justify-between sm:px-6">
         <p>所有店铺均为非官方渠道，本站不担保交易。</p>
         <Link to="/about" className="underline-offset-4 hover:text-foreground hover:underline">数据说明</Link>
       </div>

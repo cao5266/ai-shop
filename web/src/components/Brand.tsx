@@ -12,8 +12,8 @@ export function Logo({ className }: { className?: string }) {
   )
 }
 
-const SIZES = { sm: 'size-10 rounded-[22%]', md: 'size-14 rounded-[22%]', lg: 'size-24 rounded-[22%] md:size-28' } as const
-const IMG = { sm: 'size-6', md: 'size-8', lg: 'size-14 md:size-16' } as const
+const SIZES = { xs: 'size-9 rounded-[22%]', sm: 'size-11 rounded-[22%]', md: 'size-14 rounded-[22%]', lg: 'size-24 rounded-[22%] md:size-28' } as const
+const IMG = { xs: 'size-5', sm: 'size-6', md: 'size-8', lg: 'size-14 md:size-16' } as const
 
 /** 商品图标：像应用图标一样固定白底，所以黑色 logo（OpenAI、Grok、Cursor、X）在暗色主题里也看得清 */
 export function Tile({ name, size = 'md' }: { name: string; size?: keyof typeof SIZES }) {

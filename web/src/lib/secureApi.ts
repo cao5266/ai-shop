@@ -51,6 +51,11 @@ const cache = new Map<string, { at: number; data: unknown }>()
 // 遇到 401（会话过期、时间偏差、网络切换后服务端不认等）就换一次会话，把原请求重发一次。
 // 只重试一次：第二次仍失败就把错误抛给页面，避免死循环。
 export async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
+  // 设计稿 mock 模式：VITE_MOCK=1 时不请求后端，直接读 src/mock/specs.ts 的示例数据
+  if (import.meta.env.VITE_MOCK) {
+    const { mockApi } = await import('@/mock/specs')
+    try { return mockApi(path) as T } catch (e) { throw new ApiError((e as { status?: number }).status ?? 500, 'mock') }
+  }
   const hit = cache.get(path)
   if (hit && Date.now() - hit.at < 30_000) return hit.data as T
   const used = await getSession()

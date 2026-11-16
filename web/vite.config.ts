@@ -3,9 +3,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+const API = process.env.API_TARGET ?? 'http://127.0.0.1:8000'
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
   build: { outDir: 'dist', sourcemap: false, chunkSizeWarningLimit: 600 },
-  server: { port: 5173, proxy: { '/api': 'http://127.0.0.1:8000', '/go': 'http://127.0.0.1:8000' } },
+  server: { port: 5173, proxy: { '/api': API, '/go': API } },
 })
