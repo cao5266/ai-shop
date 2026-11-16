@@ -21,7 +21,7 @@ export default function App() {
     <div className="flex min-h-screen flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-foreground focus:px-4 focus:py-2 focus:text-background">跳到正文</a>
       <SiteHeader />
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1120px] flex-1 animate-in fade-in px-4 pb-20 duration-150 motion-reduce:animate-none sm:px-6">
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1200px] flex-1 animate-in fade-in px-4 pb-20 duration-150 motion-reduce:animate-none sm:px-6">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/tool/:name" element={<ToolPage />} />
