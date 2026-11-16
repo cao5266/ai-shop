@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, GoButton, LowestBadge, Pager, Price, RowsSkelet
 import { Tile } from '@/components/Brand'
 import { useAllSpecs, useApi } from '@/lib/useApi'
 import { qs } from '@/lib/secureApi'
-import { money, when } from '@/lib/format'
+import { money, shopTitle, stockText, when } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { durationGroup, lowestShopName, periodText, specName, toolMeta } from '@/lib/spec'
 import type { Offers, Spec, ToolDetail } from '@/lib/types'
@@ -42,9 +42,9 @@ export default function ToolPage() {
   const pageHref = (p: number) => { const n = new URLSearchParams(sp); if (p > 1) n.set('page', String(p)); else n.delete('page'); const s = n.toString(); return s ? `?${s}` : '?' }
 
   const crumbs = (
-    <Breadcrumb className="my-4">
+    <Breadcrumb className="my-1">
       <BreadcrumbList>
-        <BreadcrumbItem><BreadcrumbLink asChild><Link to="/">全部商品</Link></BreadcrumbLink></BreadcrumbItem>
+        <BreadcrumbItem><BreadcrumbLink asChild><Link to="/" className="inline-flex min-h-11 items-center">全部商品</Link></BreadcrumbLink></BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem><BreadcrumbPage>{name}</BreadcrumbPage></BreadcrumbItem>
       </BreadcrumbList>
@@ -97,7 +97,7 @@ export default function ToolPage() {
             <div className="mb-3 flex items-center justify-between">
               <h2 id="spec-h" className="text-lg font-semibold">选择规格</h2>
               <Dialog>
-                <DialogTrigger asChild><Button variant="link" className="h-auto p-0 text-muted-foreground"><InfoIcon />价格怎么比</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="link" className="h-11 px-2 text-muted-foreground"><InfoIcon />价格怎么比</Button></DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>价格怎么比</DialogTitle>
@@ -106,13 +106,13 @@ export default function ToolPage() {
                 </DialogContent>
               </Dialog>
             </div>
-            <RadioGroup value={active} onValueChange={(v) => update('spec', v)} aria-label="规格" className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 lg:mx-0 lg:block lg:space-y-6 lg:overflow-visible lg:px-0 lg:pb-0">
+            <RadioGroup value={active} onValueChange={(v) => update('spec', v)} aria-label="规格" className="block space-y-6">
               {groups.map((g) => (
-                <div key={g.kind} className="max-lg:contents">
-                  <p className="mb-2 hidden items-center gap-2 text-sm font-medium text-muted-foreground lg:flex">{g.kind}</p>
-                  <div className="max-lg:contents lg:space-y-2">
+                <div key={g.kind}>
+                  <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">{g.kind}</p>
+                  <div className="space-y-2">
                     {g.items.map((s) => (
-                      <label key={s.key} className="relative flex w-56 shrink-0 cursor-pointer items-center gap-3 rounded-xl border bg-card px-4 py-3 transition-colors hover:border-foreground/40 has-focus-visible:ring-3 has-focus-visible:ring-ring/50 has-data-checked:border-primary has-data-checked:bg-secondary has-data-checked:ring-1 has-data-checked:ring-primary lg:w-auto">
+                      <label key={s.key} className="relative flex w-full cursor-pointer items-center gap-3 min-h-14 rounded-xl border bg-card px-4 py-3 transition-colors hover:border-foreground/40 has-focus-visible:ring-3 has-focus-visible:ring-ring/50 has-data-checked:border-primary has-data-checked:bg-secondary has-data-checked:ring-1 has-data-checked:ring-primary">
                         <span className="absolute size-px overflow-hidden opacity-0"><RadioGroupItem value={s.key} /></span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium" title={specName(s)}>{specName(s)}</span>
@@ -122,7 +122,7 @@ export default function ToolPage() {
                       </label>
                     ))}
                   </div>
-                  {g.hidden > 0 && <button type="button" onClick={() => setExpanded((e) => ({ ...e, [g.kind]: true }))} className="mt-2 hidden h-10 w-full rounded-xl border border-dashed text-sm text-muted-foreground hover:border-foreground/40 lg:block">展开其余 {g.hidden} 个规格</button>}
+                  {g.hidden > 0 && <button type="button" onClick={() => setExpanded((e) => ({ ...e, [g.kind]: true }))} className="mt-2 h-11 w-full rounded-xl border border-dashed text-sm text-muted-foreground hover:border-foreground/40">展开其余 {g.hidden} 个规格</button>}
                 </div>
               ))}
             </RadioGroup>
@@ -157,15 +157,15 @@ export default function ToolPage() {
                         <li key={o.id} className={cn('row relative flex flex-col gap-3 p-4 sm:grid sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-center sm:gap-6 sm:p-5', o.lowest && 'bg-secondary/50')}>
                           {o.lowest && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-primary" />}
                           <div className="min-w-0">
-                            <p className="flex flex-wrap items-center gap-2 font-semibold break-words">{o.shop.name}{o.lowest && <LowestBadge />}</p>
+                            <p className="flex flex-wrap items-center gap-2 font-semibold break-words">{shopTitle(o.shop.name).title}{o.lowest && <LowestBadge />}</p>
                             <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground" title={o.title}>{o.title}</p>
-                            <p className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted-foreground"><span>{o.shop.type}</span><span>更新于 {when(o.observed_at)}</span>{o.stock && <span>库存 {o.stock}</span>}</p>
+                            <p className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted-foreground"><span>{o.shop.type}</span><span>更新于 {when(o.observed_at)}</span>{stockText(o.stock) && <span>{stockText(o.stock)}</span>}</p>
                           </div>
                           <div className="flex items-baseline justify-between gap-3 sm:block sm:text-right">
                             <Price value={o.price} currency={o.currency} suffix="" />
                             <p className="fig text-sm text-muted-foreground sm:mt-1">{i === 0 || o.price === base ? '本规格最低' : `比最低贵 ${money(Math.round((o.price - base) * 100) / 100)}`}</p>
                           </div>
-                          <GoButton href={o.go} label={`去店铺：${o.shop.name}`} className="sm:w-28" />
+                          <GoButton href={o.go} label={`去店铺：${shopTitle(o.shop.name).title}`} className="sm:w-28" />
                         </li>
                       )
                     })}

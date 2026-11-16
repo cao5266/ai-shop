@@ -11,7 +11,7 @@ export function ThemeToggle() {
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-lg" aria-label="切换主题">
+            <Button variant="ghost" size="icon-lg" className="size-11" aria-label="切换主题">
               <SunIcon className="dark:hidden" />
               <MoonIcon className="hidden dark:block" />
             </Button>

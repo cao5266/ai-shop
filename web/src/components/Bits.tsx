@@ -35,7 +35,7 @@ export function LowestBadge() {
 
 export function GoButton({ href, children = '去店铺', label, className }: { href: string; children?: string; label?: string; className?: string }) {
   return (
-    <Button asChild variant="outline" size="lg" className={cn('h-10 border-foreground/20 bg-card px-5 text-[15px] hover:border-primary hover:bg-primary hover:text-primary-foreground', className)}>
+    <Button asChild variant="outline" size="lg" className={cn('h-11 border-foreground/20 bg-card px-5 text-[15px] hover:border-primary hover:bg-primary hover:text-primary-foreground', className)}>
       <a href={href} target="_blank" rel="noopener noreferrer nofollow" aria-label={label}>{children}</a>
     </Button>
   )

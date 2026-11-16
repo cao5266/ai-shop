@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { EmptyState, ErrorState, GoButton, Price } from '@/components/Bits'
 import { useApi } from '@/lib/useApi'
-import { money, specText, when } from '@/lib/format'
+import { money, shopTitle, specText, stockText, when } from '@/lib/format'
 import type { Listing, ShopDetail } from '@/lib/types'
 
 function ListingRows({ items }: { items: Listing[] }) {
@@ -24,7 +24,7 @@ function ListingRows({ items }: { items: Listing[] }) {
                 {l.spec && <Badge variant="secondary">{specText(l.spec)}</Badge>}
               </p>
               <p className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
-                <span>更新于 {when(l.observed_at)}</span>{l.stock && <span>库存 {l.stock}</span>}
+                <span>更新于 {when(l.observed_at)}</span>{stockText(l.stock) && <span>{stockText(l.stock)}</span>}
                 {l.history.length > 1 && <span>价格变动 {l.history.map((h) => money(h.price)).join(' 到 ')}</span>}
               </p>
             </div>
@@ -42,24 +42,26 @@ function ListingRows({ items }: { items: Listing[] }) {
 export default function ShopPage() {
   const id = useParams().id ?? ''
   const { data, error, reload } = useApi<ShopDetail>(`/api/v4/shops/${encodeURIComponent(id)}`)
-  useEffect(() => { document.title = data ? `${data.name} | AI 订阅比价` : 'AI 订阅比价' }, [data])
+  useEffect(() => { document.title = data ? `${shopTitle(data.name, data.domain).title} | AI 订阅比价` : 'AI 订阅比价' }, [data])
   const crumbs = (name?: string) => (
-    <Breadcrumb className="my-4">
+    <Breadcrumb className="my-1">
       <BreadcrumbList>
-        <BreadcrumbItem><BreadcrumbLink asChild><Link to="/shops">全部店铺</Link></BreadcrumbLink></BreadcrumbItem>
+        <BreadcrumbItem><BreadcrumbLink asChild><Link to="/shops" className="inline-flex min-h-11 items-center">全部店铺</Link></BreadcrumbLink></BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem><BreadcrumbPage className="max-w-[60vw] truncate">{name ?? '店铺'}</BreadcrumbPage></BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>
   )
   if (error) return <>{crumbs()}<ErrorState message={error} retry={reload} /></>
+  const st = data ? shopTitle(data.name, data.domain) : null
   const on = data?.listings.filter((l) => l.active) ?? [], off = data?.listings.filter((l) => !l.active) ?? []
   return (
     <>
-      {crumbs(data?.name)}
+      {crumbs(st?.title)}
       <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          {data ? <h1 className="text-2xl font-semibold tracking-tight break-words md:text-3xl">{data.name}</h1> : <Skeleton className="h-9 w-64" />}
+          {data ? <h1 className="text-2xl font-semibold tracking-tight break-words md:text-3xl">{st!.title}</h1> : <Skeleton className="h-9 w-64" />}
+          {st?.url && <p className="mt-1 text-sm break-all text-muted-foreground">{st.url}</p>}
           <p className="mt-1 min-h-5 text-sm text-muted-foreground">{data ? `${data.domain}，${data.type}，更新于 ${when(data.updated_at, true)}` : ''}</p>
         </div>
         {data && <GoButton href={data.go} className="h-11 shrink-0 px-6" />}
@@ -67,9 +69,9 @@ export default function ShopPage() {
       {data && !data.listings.length && <EmptyState title="暂未采到这家店铺的商品价格" hint={data.crawl_status ?? undefined} />}
       {data && data.listings.length > 0 && (
         <Tabs defaultValue="on">
-          <TabsList>
-            <TabsTrigger value="on">在售商品（{on.length}）</TabsTrigger>
-            <TabsTrigger value="off">已售罄或下架（{off.length}）</TabsTrigger>
+          <TabsList className="h-auto w-full sm:w-fit">
+            <TabsTrigger value="on" className="h-11">在售商品（{on.length}）</TabsTrigger>
+            <TabsTrigger value="off" className="h-11">已售罄或下架（{off.length}）</TabsTrigger>
           </TabsList>
           <TabsContent value="on" className="mt-4"><ListingRows items={on} /></TabsContent>
           <TabsContent value="off" className="mt-4"><ListingRows items={off} /></TabsContent>

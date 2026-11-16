@@ -120,7 +120,7 @@ export default function Home() {
           <div role="group" aria-label="按分类筛选" className="-mx-4 flex max-w-[calc(100%+2rem)] gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:max-w-none sm:px-0">
             {cats.map((c) => (
               <button key={c} type="button" aria-pressed={cat === c} onClick={() => setCat(c)}
-                className={cn('h-10 shrink-0 rounded-full border px-4 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+                className={cn('h-11 shrink-0 rounded-full border px-4 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
                   cat === c ? 'border-foreground bg-foreground text-background' : 'bg-card hover:border-foreground/40')}>{c}</button>
             ))}
           </div>

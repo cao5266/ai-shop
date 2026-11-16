@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 /** 站点 logo：亮色用深色字标，暗色用提亮的图形和浅色字标 */
 export function Logo({ className }: { className?: string }) {
   return (
-    <Link to="/" className={cn('block shrink-0 rounded-md', className)} aria-label="AI 订阅比价，返回首页">
+    <Link to="/" className={cn('block shrink-0 rounded-md py-1.5', className)} aria-label="AI 订阅比价，返回首页">
       <img src="/logo.svg" alt="AI 订阅比价" height="32" className="h-8 w-auto dark:hidden" />
       <img src="/logo-dark.svg" alt="" aria-hidden="true" height="32" className="hidden h-8 w-auto dark:block" />
     </Link>

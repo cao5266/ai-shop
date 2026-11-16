@@ -9,7 +9,7 @@ import { EmptyState, ErrorState, GoButton, Pager, Price, RowsSkeleton } from '@/
 import { SearchInput } from '@/components/SearchInput'
 import { useApi } from '@/lib/useApi'
 import { qs } from '@/lib/secureApi'
-import { specText } from '@/lib/format'
+import { shopTitle, specText } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Home, Shops as ShopsData } from '@/lib/types'
 
@@ -85,7 +85,7 @@ export default function Shops() {
       <div role="group" aria-label="按店铺类型筛选" className="mt-4 flex gap-2 overflow-x-auto pb-1">
         {[{ name: '', count: home.data?.types.reduce((a, t) => a + t.count, 0) ?? 0, label: '全部' }, ...(home.data?.types.map((t) => ({ ...t, label: t.name })) ?? [])].map((t) => (
           <button key={t.name} type="button" aria-pressed={type === t.name} onClick={() => set('type', t.name)}
-            className={cn('inline-flex h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50', type === t.name ? 'border-foreground bg-foreground text-background' : 'bg-card hover:border-foreground/40')}>
+            className={cn('inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50', type === t.name ? 'border-foreground bg-foreground text-background' : 'bg-card hover:border-foreground/40')}>
             {t.label}<span className="fig text-base opacity-70">{t.count}</span>
           </button>
         ))}
@@ -102,9 +102,9 @@ export default function Shops() {
                   {list.data.items.map((s) => (
                     <li key={s.id} className="row flex flex-col gap-3 p-4 sm:grid sm:grid-cols-[minmax(0,1fr)_14rem_auto] sm:items-center sm:gap-6 sm:p-5">
                       <div className="flex min-w-0 items-start gap-3">
-                        <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-lg font-semibold text-muted-foreground">{[...s.name][0]}</span>
+                        <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-lg font-semibold text-muted-foreground">{[...shopTitle(s.name, s.domain).title][0]}</span>
                         <div className="min-w-0">
-                          <p className="font-semibold break-words"><Link to={`/shop/${s.id}`} className="underline-offset-4 hover:underline">{s.name}</Link></p>
+                          <p className="font-semibold break-words"><Link to={`/shop/${s.id}`} className="-my-2.5 inline-block py-2.5 underline-offset-4 hover:underline">{shopTitle(s.name, s.domain).title}</Link></p>
                           <p className="text-xs text-muted-foreground">{s.type}，{s.domain}</p>
                           <p className="mt-2 flex flex-wrap gap-1">
                             {s.products.slice(0, 4).map((p) => <Badge key={p} variant="outline">{p}</Badge>)}
@@ -122,7 +122,7 @@ export default function Shops() {
                             </>
                           ) : <p className="text-sm text-muted-foreground">暂未采到价格</p>}
                         </div>
-                        <GoButton href={s.go} label={`去店铺：${s.name}`} className="sm:w-28" />
+                        <GoButton href={s.go} label={`去店铺：${shopTitle(s.name, s.domain).title}`} className="sm:w-28" />
                       </div>
                     </li>
                   ))}
