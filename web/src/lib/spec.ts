@@ -26,8 +26,9 @@ export const lowestShopName = (s: Spec) => s.lowest_shop?.name || null
 
 // ---- 前端自带的展示元数据：接口目前不返回厂商、分类、简介 ----
 const META: Record<string, { vendor: string; category: string; tagline: string }> = {
+  'ChatGPT Go': { vendor: 'OpenAI', category: '对话', tagline: 'ChatGPT 入门付费档' },
   'ChatGPT Plus': { vendor: 'OpenAI', category: '对话', tagline: 'GPT 系列对话、读图、语音与 Codex 基础额度' },
-  'ChatGPT Pro': { vendor: 'OpenAI', category: '对话', tagline: '最高额度，适合长时间推理与大量调用' },
+  'ChatGPT Pro': { vendor: 'OpenAI', category: '对话', tagline: '最高额度，含 Codex，适合长时间推理与大量调用' },
   'Claude Pro': { vendor: 'Anthropic', category: '对话', tagline: 'Claude 对话、长文档与 Projects' },
   'Claude Max': { vendor: 'Anthropic', category: '对话', tagline: '5 倍与 20 倍额度，含 Claude Code' },
   Cursor: { vendor: 'Anysphere', category: '编程', tagline: 'AI 编辑器，按档位区分每月请求额度' },
