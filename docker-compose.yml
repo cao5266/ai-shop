@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aishops}
+      POSTGRES_USER: ${POSTGRES_USER:-aishops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # 不对外暴露 5432，只有 app 容器能通过内网访问
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aishops}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-aishops}
+    volumes:
+      - ./incoming:/srv/app/incoming:ro   # 每天的采集 JSON 放这里，再用 docker compose exec 导入
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
+
+volumes:
+  pgdata:
