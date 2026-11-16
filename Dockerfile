@@ -8,6 +8,7 @@ ARG PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple
 ARG PIP_TRUSTED_HOST=mirrors.cloud.tencent.com
 RUN pip install -i "${PIP_INDEX_URL}" --trusted-host "${PIP_TRUSTED_HOST}" -r requirements.txt
 COPY backend ./backend
+COPY crawler ./crawler
 COPY static ./static
 COPY data/seed ./data/seed
 RUN useradd -r -u 10001 app && chown -R app /srv/app

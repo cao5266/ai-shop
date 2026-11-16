@@ -162,3 +162,45 @@ class ShopSnapshot(Base):
     n_accounts: Mapped[int] = mapped_column(Integer)
     http_code: Mapped[str | None] = mapped_column(String(10))
     risk_level: Mapped[str] = mapped_column(String(4))
+
+
+class Listing(Base):
+    __tablename__ = "listings"
+    __table_args__ = (UniqueConstraint("shop_id", "listing_key"),)
+    id: Mapped[int] = mapped_column(PK, primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), index=True)
+    listing_key: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(Text)
+    price: Mapped[float] = mapped_column(Numeric(14, 4))
+    currency: Mapped[str] = mapped_column(String(8), default="CNY")
+    url: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text)
+    image: Mapped[str | None] = mapped_column(Text)
+    spec: Mapped[dict] = mapped_column(JSONType)
+    spec_key: Mapped[str] = mapped_column(String(32), index=True)
+    stock: Mapped[str | None] = mapped_column(String(100))
+    sales: Mapped[str | None] = mapped_column(String(100))
+    risk: Mapped[str] = mapped_column(String(8))
+    source_url: Mapped[str] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    observed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    last_run_id: Mapped[int] = mapped_column(ForeignKey("crawl_runs.id"))
+
+
+class ListingPriceHistory(Base):
+    __tablename__ = "listing_price_history"
+    id: Mapped[int] = mapped_column(PK, primary_key=True, autoincrement=True)
+    listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id"), index=True)
+    price: Mapped[float] = mapped_column(Numeric(14, 4))
+    currency: Mapped[str] = mapped_column(String(8))
+    observed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    crawl_run_id: Mapped[int] = mapped_column(ForeignKey("crawl_runs.id"))
+
+
+class ShopCrawlResult(Base):
+    __tablename__ = "shop_crawl_results"
+    id: Mapped[int] = mapped_column(PK, primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    crawl_run_id: Mapped[int] = mapped_column(ForeignKey("crawl_runs.id"))
+    result: Mapped[dict] = mapped_column(JSONType)

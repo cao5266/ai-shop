@@ -15,11 +15,11 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from .models import (CrawlRun, Price, PriceHistory, Product, PromoterAccount, RiskFlag, Shop,
-                     ShopProduct, ShopSnapshot, XPost, utcnow)
+                     ShopProduct, ShopSnapshot, XPost, utcnow, Listing, ListingPriceHistory, ShopCrawlResult)
 
 PRODUCT_ORDER = ["ChatGPT Plus", "ChatGPT Pro", "Claude Pro", "Claude Max", "Grok Plus", "Grok Premium",
                  "Grok Super", "Grok Ultra", "Cursor", "Muse", "Gemini", "Perplexity", "Copilot",
-                 "X会员", "Telegram会员"]
+                  "X会员", "Telegram会员", "Codex", "Midjourney", "Grok"]
 
 # 风险标记归类：(正则, code, 短标签, 严重度)。严重度「高」的任意一条 → 店铺风险等级为高。
 FLAG_RULES = [
@@ -188,6 +188,8 @@ def _import_shop(session, run, s, now, get_product):
             session.add(ShopProduct(shop_id=shop.id, product_id=p.id, first_seen_at=now, last_seen_at=now))
 
     # --- 价格（upsert + 变动历史）
+    if "listings" in s:
+        _import_listings(session, run, shop, s, now, get_product)
     quotes: list[tuple[str, str, str, float, str | None]] = []  # source,key,label,amount,product
     seen_labels = Counter()
     for label, amount in parse_post_prices(s.get("prices_from_posts")):
@@ -290,10 +292,51 @@ def _import_shop(session, run, s, now, get_product):
     session.flush()
     post_p = [float(a) for (a,) in session.execute(select(Price.amount).where(
         Price.shop_id == shop.id, Price.source == "post", Price.last_run_id == run.id))]
-    shop.min_price = min(post_p) if post_p else None
+    shop.min_price = None
+    page_p = [float(a) for (a,) in session.execute(select(Listing.price).where(
+        Listing.shop_id == shop.id, Listing.active.is_(True), Listing.currency == "CNY"))]
+    if page_p: shop.min_price = min(page_p)
 
     session.add(ShopSnapshot(shop_id=shop.id, crawl_run_id=run.id, n_posts=shop.n_posts,
                              n_accounts=shop.n_accounts, http_code=shop.http_code, risk_level=shop.risk_level))
+
+
+def _import_listings(session, run, shop, data, now, get_product):
+    from decimal import Decimal
+    from urllib.parse import urlsplit
+    existing = {r.listing_key: r for r in session.scalars(select(Listing).where(Listing.shop_id == shop.id))}
+    crawl = data.get("crawl", {})
+    session.add(ShopCrawlResult(shop_id=shop.id, crawl_run_id=run.id, result=crawl))
+    if crawl.get("status") in ("success", "empty") and crawl.get("complete"):
+        for row in existing.values(): row.active = False
+    linked = set(session.scalars(select(ShopProduct.product_id).where(ShopProduct.shop_id == shop.id)))
+    for item in data.get("listings", []):
+        price = Decimal(str(item["price"]))
+        if not price.is_finite() or price <= 0: raise ValueError("商品价格必须是正数")
+        if urlsplit(item["url"]).scheme not in ("https", "http"): raise ValueError("商品链接协议无效")
+        pname = item.get("product")
+        pid = get_product(pname).id if pname else None
+        if pid and pid not in linked:
+            session.add(ShopProduct(shop_id=shop.id, product_id=pid, first_seen_at=now, last_seen_at=now))
+            linked.add(pid)
+        observed = dt.datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00"))
+        row = existing.get(item["listing_key"])
+        changed = row is None or Decimal(str(row.price)) != price or row.currency != item.get("currency", "CNY")
+        vals = dict(product_id=pid, title=item["title"], price=price, currency=item.get("currency", "CNY"),
+                    url=item["url"], category=item.get("category"), image=item.get("image") if isinstance(item.get("image"), str) else None,
+                    spec=item["spec"], spec_key=item["spec"]["key"], stock=str(item["stock"]) if item.get("stock") is not None else None,
+                    sales=str(item["sales"]) if item.get("sales") is not None else None, risk=item.get("risk", "未判定"),
+                    source_url=item.get("source_url") or item["url"], active=item.get("stock_status") != "out" and item.get("stock") != 0,
+                    observed_at=observed, last_run_id=run.id)
+        if row is None:
+            row = Listing(shop_id=shop.id, listing_key=item["listing_key"], **vals)
+            session.add(row); session.flush(); run.prices_new += 1
+        else:
+            for k, v in vals.items(): setattr(row, k, v)
+            if changed: run.prices_changed += 1
+        if changed:
+            session.add(ListingPriceHistory(listing_id=row.id, price=price, currency=row.currency,
+                                            observed_at=observed, crawl_run_id=run.id))
 
 
 def import_file(session: Session, path: str, force: bool = False) -> CrawlRun:

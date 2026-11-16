@@ -16,6 +16,17 @@ button{font:inherit;color:inherit}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .wrap{max-width:1160px;margin:0 auto;padding:0 24px}
 :focus-visible{outline:3px solid #7fc1a9;outline-offset:2px;border-radius:8px}
+.spec-list{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
+.spec-line{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin:6px 0;align-items:baseline}
+.spec-line span{color:var(--sub);max-width:65%;overflow-wrap:anywhere}
+.spec-line b{white-space:nowrap;font-variant-numeric:tabular-nums}
+.spec-select{width:100%;display:flex;align-items:center;gap:8px}
+.spec-select select{max-width:90%;flex:1;min-width:0}
+.offer-meta{font-size:11px;color:var(--sub);margin:8px 0 0}
+.offer-meta .badge{font-size:10px;padding:1px 6px}
+.offer-meta .btn{height:25px;font-size:11px;margin-top:4px}
+.amt,.pr,.v{font-variant-numeric:tabular-nums}
+@media(min-width:900px){.item-main{grid-template-columns:minmax(0,1fr) minmax(220px,1fr) 100px 112px}}
 .muted{color:var(--sub)}
 
 /* 提示条：清晰但不刺眼 */
