@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI 订阅比价</title>
 <meta name="description" content="按 AI 工具比较各家店铺的在售价格，价格取自店铺商品页，按期限、额度和交付方式分开比。">
-<meta name="theme-color" content="#F5F5F3">
+<meta name="theme-color" content="#f5f5f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111312" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<!-- 主题初始化：必须是 head 里的同步内联脚本，在首次绘制前给 <html> 加上 dark 类，避免暗色用户看到白屏闪烁。
+     CSP 用 sha256 哈希放行它（后端读取构建后的 index.html 自动计算），不使用 unsafe-inline。改动这段脚本后无需手动改 CSP。 -->
+<script>(function(){try{var t=localStorage.getItem("theme")||"system";var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var r=document.documentElement;r.classList.toggle("dark",d);r.style.colorScheme=d?"dark":"light"}catch(e){}})()</script>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">

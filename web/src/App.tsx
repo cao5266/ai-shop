@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
-import { Footer, Header } from './components/Chrome'
+import { SiteFooter, SiteHeader } from './components/SiteChrome'
+import { NotFound } from './components/Bits'
 import Home from './pages/Home'
 import ToolPage from './pages/ToolPage'
 import Shops from './pages/Shops'
 import ShopPage from './pages/ShopPage'
 import About from './pages/About'
-import { NotFound } from './components/Bits'
 
 export default function App() {
   const { pathname } = useLocation()
@@ -18,10 +18,10 @@ export default function App() {
     else document.getElementById('main')?.focus({ preventScroll: true })
   }, [pathname])
   return (
-    <>
-      <a className="skip" href="#main">跳到正文</a>
-      <Header />
-      <main id="main" tabIndex={-1} className="wrap page">
+    <div className="flex min-h-screen flex-col">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-foreground focus:px-4 focus:py-2 focus:text-background">跳到正文</a>
+      <SiteHeader />
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1120px] flex-1 animate-in fade-in px-4 pb-20 duration-150 motion-reduce:animate-none sm:px-6">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/tool/:name" element={<ToolPage />} />
@@ -31,7 +31,7 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
-      <Footer />
-    </>
+      <SiteFooter />
+    </div>
   )
 }

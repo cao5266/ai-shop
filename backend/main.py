@@ -1,6 +1,9 @@
 """FastAPI：加密接口 + 跳转 + React 构建产物。"""
 from __future__ import annotations
+import base64
+import hashlib
 import os
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -18,8 +21,42 @@ WEB_DIST = Path(os.environ.get("WEB_DIST") or ROOT / "web" / "dist")
 app = FastAPI(title="AI 订阅比价", docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(api_router)
 
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "
-       "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+# Radix（shadcn 的 Select、弹层滚动锁定）会往 <head> 里注入固定内容的 <style> 元素。
+# 不用 'unsafe-inline'，而是按内容的 sha256 逐条放行。升级 radix-ui 后如果浏览器控制台出现
+# 「Applying inline style violates … style-src」，用 scripts/collect_csp_hashes.py 取新的哈希替换这里。
+STYLE_HASHES = (
+    "'sha256-441zG27rExd4/il+NvIqyL8zFx5XmyNQtE381kSkUJk='",
+    "'sha256-nzTgYzXYDNe6BAHiiI7NNlfK8n/auuOAhh2t92YvuXo='",
+)
+
+
+def build_csp(script_hashes: tuple[str, ...] = ()) -> str:
+    # script-src 不含 'unsafe-inline'：页面里唯一的内联脚本（主题初始化，防止暗色主题闪白）用 sha256 哈希放行。
+    # 样式：<style> 元素与外链样式只认同源加上面几条哈希；style 属性（Radix 弹层定位会写内联 style）单独放行，见 README。
+    scripts = " ".join(("'self'",) + script_hashes)
+    styles = " ".join(("'self'",) + STYLE_HASHES)
+    return (f"default-src 'self'; script-src {scripts}; style-src {styles}; style-src-attr 'unsafe-inline'; "
+            "img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; "
+            "form-action 'self'; frame-ancestors 'none'")
+
+
+CSP = build_csp()
+_html_csp: dict = {"mtime": None, "value": CSP}
+
+
+def html_csp() -> str:
+    """读取构建产物 index.html 里的内联脚本，算出 sha256 放进 CSP（文件变化时重新计算）。"""
+    index = WEB_DIST / "index.html"
+    try:
+        mtime = index.stat().st_mtime
+    except OSError:
+        return CSP
+    if _html_csp["mtime"] != mtime:
+        html = index.read_text(encoding="utf-8")
+        hashes = tuple("'sha256-" + base64.b64encode(hashlib.sha256(s.encode()).digest()).decode() + "'"
+                       for s in re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, re.S) if s.strip())
+        _html_csp.update(mtime=mtime, value=build_csp(hashes))
+    return _html_csp["value"]
 
 
 @app.middleware("http")
@@ -89,4 +126,4 @@ def spa(path: str):
     index = WEB_DIST / "index.html"
     if not index.exists():
         raise HTTPException(503, "前端尚未构建：cd web && npm ci && npm run build")
-    return FileResponse(index, headers={"Cache-Control": "no-cache"})
+    return FileResponse(index, headers={"Cache-Control": "no-cache", "Content-Security-Policy": html_csp()})

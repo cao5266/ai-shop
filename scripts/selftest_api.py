@@ -59,6 +59,14 @@ check("伪造跳转令牌 404", c.get(go[:-4] + "0000", headers=B).status_code =
 check("跨站来源的跳转被拒绝", c.get(go, headers={**B, "Sec-Fetch-Site": "cross-site"}).status_code == 403)
 hdr = c.get("/", headers=B).headers
 check("安全响应头齐全", all(k in hdr for k in ("content-security-policy", "x-content-type-options", "x-frame-options", "referrer-policy", "permissions-policy")))
+# CSP：脚本和样式都不允许 unsafe-inline；内联主题初始化脚本必须靠 sha256 放行，且哈希与页面里的脚本一致
+import re
+page = c.get("/", headers=B); csp = page.headers.get("content-security-policy", "")
+script_src = re.search(r"script-src ([^;]*)", csp).group(1); style_src = re.search(r"style-src ([^;]*)", csp).group(1)
+inline = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", page.text, re.S)
+want = ["'sha256-" + base64.b64encode(hashlib.sha256(s.encode()).digest()).decode() + "'" for s in inline if s.strip()]
+check("CSP：script-src / style-src 不含 unsafe-inline", "unsafe-inline" not in script_src and "unsafe-inline" not in style_src, f"script-src {script_src[:60]}…")
+check("CSP：主题初始化脚本的 sha256 在 script-src 里", len(want) == 1 and all(w in script_src for w in want), want[0][:30] + "…" if want else "页面里没有内联脚本")
 # 限流：连续请求 session，最终应出现 429
 codes = [c.get("/api/v4/session", headers=B).status_code for _ in range(40)]
 check("超限后返回 429", 429 in codes, f"首个 429 出现在第 {codes.index(429) + 1 if 429 in codes else '-'} 次")

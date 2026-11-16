@@ -5,7 +5,7 @@
 
 ## 技术栈
 
-- 前端：React 19 + TypeScript + Vite（`web/`），react-router，无 UI 框架，系统中文字体
+- 前端：React 19 + TypeScript + Vite（`web/`），Tailwind CSS v4 + shadcn/ui（radix 底层，组件源码在 `web/src/components/ui/`），react-router，系统中文字体；亮色 / 暗色 / 跟随系统三种主题
 - 后端：Python 3.13、FastAPI、SQLAlchemy 2、psycopg 3、cryptography
 - 数据库：PostgreSQL（生产）；没设置 `DATABASE_URL` 时回退到本地 SQLite（仅开发）
 - 部署：Docker Compose（app + postgres），Dockerfile 多阶段构建（node 构建前端，python 运行）
@@ -126,7 +126,7 @@ RESTORE_CMD="psql postgresql://用户:密码@主机/库" ./scripts/restore_encry
 7. 旧的明文接口（`/api/shops`、`/api/tools` 等）已删除。
 8. 前端的 AES-GCM / HMAC 用纯 JS（noble）实现，而不是 WebCrypto，因为 WebCrypto 在 http 页面里不可用，而站点可能先用 IP + HTTP 访问。
 
-自测：`.venv/bin/python scripts/selftest_api.py`（25 项：解密、重放、篡改、过期、UA、跨站、旧接口、分页上限、无真实链接、302、令牌伪造、响应头、429）。
+自测：`.venv/bin/python scripts/selftest_api.py`（29 项，含 CSP：解密、重放、篡改、过期、UA、跨站、旧接口、分页上限、无真实链接、302、令牌伪造、响应头、429）。
 
 ## HTTPS 与 nginx（域名最后才配）
 
@@ -151,12 +151,15 @@ RESTORE_CMD="psql postgresql://用户:密码@主机/库" ./scripts/restore_encry
 9. 证书续期：certbot 自带定时任务，`sudo certbot renew --dry-run` 验证一次。
 10. 不想碰 443：把模板里的 `listen 443` 改成其他端口（例如 8443），用 `https://域名:8443` 访问。
 
+主题与 CSP：页面 `<head>` 里有一段同步内联脚本，在首次绘制前按 localStorage（键 `theme`，缺省为跟随系统）给 `<html>` 加 `dark` 类，所以暗色用户不会看到白屏闪烁。后端读取构建后的 `index.html`，把这段脚本的 sha256 放进 `script-src`，**脚本和样式都不使用 `unsafe-inline`**。例外只有两处：一是 `style-src-attr 'unsafe-inline'`，因为 Radix 弹层定位会写元素的 style 属性（只影响属性，不能执行脚本）；二是 `style-src` 里按内容列出的两个 sha256，对应 Radix 注入的固定 `<style>`。升级 `radix-ui` 后如果浏览器控制台出现 style-src 违规，运行 `scripts/collect_csp_hashes.py` 取新哈希，更新 `backend/main.py` 里的 `STYLE_HASHES`。
+
 安全响应头：CSP、`X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`、`Cross-Origin-Opener-Policy` 由应用返回（`backend/main.py`），HSTS 由 nginx 返回。
 
 ## 品牌与 logo
 
 - 站名「AI 订阅比价」。logo 是三根递减的价格柱，最低的一根用琥珀色，字标「AI 订阅比价」取自 Noto Sans CJK SC Bold（SIL OFL 1.1）并转成轮廓，不依赖字体文件。
 - 文件在 `web/public/`：`logo.svg`（图形+字标）、`logo-light.svg`（反白）、`logo-mark.svg`、`favicon.svg`、`favicon.ico`、`favicon-16/32/48.png`、`apple-touch-icon.png`、`icon-192/512.png`、`site.webmanifest`。
+- 暗色主题用 `logo-dark.svg`（图形底色提亮、字标改浅色），由站点按主题自动切换。
 - 重新生成：`python web/brand/make_brand.py`（需要 fonttools、pillow、playwright）。
 - 商品 logo 在 `web/public/logos/`，来源与许可见该目录的 `README.md` 和 `SOURCES.md`。
 
@@ -166,7 +169,8 @@ RESTORE_CMD="psql postgresql://用户:密码@主机/库" ./scripts/restore_encry
 python -m unittest crawler.test_pipeline            # 采集/导入的回归测试（有无加密密钥都应通过）
 python scripts/selftest_api.py                      # 接口防护
 python scripts/audit_ui.py                          # 320/375 宽度溢出、键盘焦点、方向键、路由焦点
-python shoot4.py                                    # 截图到 shots/v4_*.png
+python scripts/test_retry_ui.py                     # 401 自动重试、换 IP
+python shoot5.py                                    # 截图到 shots/v5_*.png，并检查主题持久化、防闪白、控制台/CSP 报错
 ```
 
 ## 已知限制
