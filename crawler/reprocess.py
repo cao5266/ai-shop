@@ -3,7 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-from .normalize import classify, specification
+from .normalize import classify, specification, comparison_exclusion
 from .run import report
 
 
@@ -33,6 +33,11 @@ def main():
             r['product'] = classify(r['title'], r.get('category', ''))
             r['spec'] = specification(r['title'], r['product'])
             r['risk'] = r['spec']['risk']
+            r['classified_product'] = r['product']
+            r['standard_product'] = r['classified_product']
+            r['comparison_exclusion'] = comparison_exclusion(r['title'], r['product'], r['spec'], r['price'])
+            if r['comparison_exclusion']:
+                r['product'] = None
             identity = r.get('external_id') or r['url'] + '|' + r['title']
             r['listing_key'] = hashlib.sha256(identity.encode()).hexdigest()
     text = json.dumps(data, ensure_ascii=False, indent=2)

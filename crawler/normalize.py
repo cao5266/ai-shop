@@ -1,6 +1,55 @@
 """保守归类：规格不明时保留原商品标题，绝不拿不同规格混比。"""
 import hashlib
 import re
+from decimal import Decimal, InvalidOperation
+
+
+def comparison_exclusion(title, product, spec, price):
+    """标准商品仅关联可验证的入门付费规格；原报价仍完整保留。"""
+    if not product:
+        return "非独立标准订阅"
+    t = title.lower()
+    if re.search(r"体验|试用|小时卡|天卡|日卡|教程|教学|接码|接马|配件|代刷|验证专用|起发|批发专用|暂时下架", t):
+        return "体验、短期、辅助服务或批发报价"
+    try:
+        amount = Decimal(str(price))
+        if not amount.is_finite() or amount < 5 or amount >= 9999:
+            return "异常金额，不能作为完整付费订阅"
+    except (InvalidOperation, TypeError):
+        return "无效金额"
+    if product == "Muse":
+        # Current catalog evidence consists of accounts/token balances, not paid plans.
+        if "token" in t or "额度" in t or "成品" in t:
+            return "赠送额度或成品号，非可核实的付费入门订阅"
+    if spec.get("delivery") == "成品号":
+        return "成品账号不是可比的订阅充值规格"
+    # 保留月卡以外的合理入口：Telegram 官方赠送周期从三个月起。
+    if spec.get("duration") != ("3月" if product == "Telegram会员" else "1月"):
+        return "非入门月卡或期限未核实" if product != "Telegram会员" else "非三个月入门规格"
+    tiers = " ".join(spec.get("tier", []))
+    if product == "Grok Premium":
+        return "Grok Premium 是更高档套餐，主入口按 Grok Plus 展示"
+    if product.startswith("Grok") and product != "Grok Plus":
+        return "Grok 入口为 Plus，排除其他档位"
+    if product == "Grok" and "plus" not in " ".join(spec.get("tier", [])):
+        return "Grok 入门档为 Plus，排除未识别档位"
+    if product == "Cursor" and ("pro" not in tiers or re.search(r"ultra|pro\+", tiers)):
+        return "Cursor 入口为 Pro 月卡"
+    if product in ("ChatGPT Plus", "Grok Plus") and spec.get("delivery") == "未注明交付":
+        return "规格未证明是订阅充值"
+    if product == "Perplexity" and ("pro" not in tiers or "max" in tiers):
+        return "Perplexity 入口为 Pro 月卡"
+    if product == "ChatGPT Pro" and not re.search(r"pro100|5x", tiers):
+        return "Pro 系列入口为 100/5x 月卡"
+    if product == "Claude Max" and ("5x" not in tiers or "20x" in tiers):
+        return "Max 系列入口为 5x 月卡"
+    if product == "Gemini" and ("pro" not in tiers or "ultra" in tiers):
+        return "Gemini 入口为 Pro 月卡"
+    if product == "Codex" and ("plus" not in tiers or "pro" in tiers):
+        return "Codex 以常见 Plus 月卡为入口，额度包和高档单列原始报价"
+    if re.search(r"首月|半价|试用", t):
+        return "受资格限制的优惠，不能代表常规入门价格"
+    return None
 
 
 def classify(title, category=""):
@@ -44,7 +93,7 @@ def representative_rank(group):
     else: tier = 2 if advanced else 0
     monthly = spec.get("duration") == "1月"
     period = 0 if monthly else 1 if spec.get("duration") is None else 2
-    return (group.get("currency") != "CNY", period, tier, spec.get("incomplete", True),
+    return (group.get("currency") != "CNY", tier, period, spec.get("incomplete", True),
             -group.get("n_shops", group.get("n_prices", 0)), group.get("label", ""), group.get("key", ""))
 
 
@@ -57,7 +106,7 @@ def specification(title, product=None):
     m = re.search(r"(\d+\s*[-–~至到]\s*\d+|\d+)\s*(天|日|个自然月|个月|月|年|小时)", t)
     if m: duration = re.sub(r"\s", "", m[0]).replace("个自然月", "月").replace("个月", "月").replace("日", "天")
     if not duration:
-        for rx, val in [(r"半年", "6月"), (r"年卡|年付|年费|一年", "1年"), (r"季卡|季付", "3月"), (r"月卡|月付|月费|一个月|一月", "1月"), (r"周卡", "7天")]:
+        for rx, val in [(r"半年", "6月"), (r"年卡|年付|年费|一年|一整年", "1年"), (r"季卡|季付", "3月"), (r"月卡|月付|月费|月订阅|一个月|一月", "1月"), (r"周卡", "7天")]:
             if re.search(rx, t): duration = val; break
     if not duration:
         for cn, n in [("两", 2), ("三", 3), ("六", 6)]:

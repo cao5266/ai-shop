@@ -13,6 +13,7 @@ import httpx
 from playwright.async_api import async_playwright
 from .adapters import ADAPTERS
 from .adapters.generic import parse_html
+from .normalize import representative_rank
 
 HERE = Path(__file__).resolve().parent
 READ_QUERIES = {"/shopApi/goods/list", "/shopApi/goods/detail", "/shopApi/goodsCategory/list",
@@ -128,7 +129,28 @@ def report(data, previous, path):
     for (product, spec, currency), prices in sorted(grouped.items()):
         lines.append(f'| {product} | {spec.replace("|", "/")} | {currency} | {min(prices)} | {max(prices)} | {len(prices)} |')
     lines += ['', '规格信息不完整时，线上只按同一商品标题比较；库存为零的商品不参与在售最低价。', '', '## 价格变化', '', *(changes or ['- 无已知变化（首次采集不视为涨跌）']), '', '## 失败店铺及原因', '']
-    covered = {r.get("product") for s in shops for r in s.get("listings", [])}
+    lines += ['## 代表规格与最低价', '', '| 标准商品 | 代表规格 | 最低价（元） | 结果 |', '|---|---|---:|---|']
+    products = sorted({r.get('classified_product', r.get('product')) for s in shops for r in s.get('listings', [])
+                       if r.get('classified_product', r.get('product'))})
+    for product in products:
+        candidates = [r for s in shops for r in s.get('listings', [])
+                      if r.get('classified_product', r.get('product')) == product and not r.get('comparison_exclusion')
+                      and r.get('currency') == 'CNY' and r.get('stock_status') != 'out' and r.get('stock') != 0]
+        groups = {}
+        for row in candidates:
+            key = row['spec']['key']
+            group = groups.setdefault(key, {'product': product, 'spec': row['spec'], 'label': row['spec']['label'],
+                                            'currency': 'CNY', 'n_shops': 0, 'shops': set(), 'rows': []})
+            group['rows'].append(row)
+            group['shops'].add(next(s['shop_key'] for s in shops if any(x['listing_key'] == row['listing_key'] for x in s.get('listings', []))))
+            group['n_shops'] = len(group['shops'])
+        if not groups:
+            lines.append(f"| {product} | — | — | 无合格入门付费规格 |")
+            continue
+        chosen = min(groups.values(), key=representative_rank)
+        price = min(Decimal(r['price']) for r in chosen['rows'])
+        lines.append(f"| {product} | {chosen['label'].replace('|', '/')} | {price} | 已按入门规格筛选 |")
+    covered = {r.get("classified_product", r.get("product")) for s in shops for r in s.get("listings", [])}
     missing = [p for p in ["ChatGPT Plus", "ChatGPT Pro", "Claude Pro", "Claude Max", "Grok", "Gemini", "Cursor", "Codex", "Muse", "Perplexity", "Copilot", "X会员", "Telegram会员", "Midjourney"] if p not in covered]
     if missing: lines.insert(4, '尚未采到可验证商品价的标准商品：' + '、'.join(missing) + '。')
     lines += [f'- {s["shop_key"]}：{s["crawl"].get("reason", "")}' for s in shops if s["crawl"]["status"] not in ("success", "skipped")]
@@ -202,10 +224,15 @@ async def run(args):
     data["scope"] = {**source.get("scope", {}), "source": "店铺公开商品接口与只读浏览器页面；X 历史报价仅供溯源", "limitations": ["价格为采集时公开展示金额，库存与价格可能随时变化。", "访问验证、关闭、超时等失败保留原因；Telegram 店仅记录。", "未标明期限或额度的商品不与已知规格混合比较。"], "crawler": {"shops": len(results), "priced_shops": sum(bool(s["listings"]) for s in results)}}
     for shop in results:
         for row in shop.get("listings", []):
-            from .normalize import classify, specification
+            from .normalize import classify, specification, comparison_exclusion
             row["product"] = classify(row["title"], row.get("category", ""))
             row["spec"] = specification(row["title"], row["product"])
             row["risk"] = row["spec"]["risk"]
+            row['classified_product'] = row['product']
+            row['standard_product'] = row['classified_product']
+            row['comparison_exclusion'] = comparison_exclusion(row['title'], row['product'], row['spec'], row['price'])
+            if row['comparison_exclusion']:
+                row['product'] = None
             identity = row.get("external_id") or row["url"] + "|" + row["title"]
             row["listing_key"] = hashlib.sha256(identity.encode()).hexdigest()
     # 诊断过的历史关联只说明提及，不等于在售。明确记录以供详情解释。

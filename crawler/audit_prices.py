@@ -17,18 +17,23 @@ ROOT = Path(__file__).resolve().parents[2]
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--date', default=dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat())
+    parser.add_argument('--refresh', action='store_true', help='重新核实，不复用抽查缓存')
+    parser.add_argument('--product', action='append', help='只核实指定商品，可重复')
     args = parser.parse_args()
     path = ROOT / 'crawler/reports' / (args.date + '.json')
     data = json.loads(path.read_text())
     previous_path = path.parent / (args.date + '-audit.json')
-    previous = json.loads(previous_path.read_text()) if previous_path.exists() else []
+    previous = json.loads(previous_path.read_text()) if previous_path.exists() and not args.refresh else []
     products = ['ChatGPT Plus', 'ChatGPT Pro', 'Claude Pro', 'Claude Max', 'Grok Plus',
-                'Grok Premium', 'Gemini', 'Cursor', 'Codex', 'Muse']
+                'Gemini', 'Cursor', 'Codex', 'Muse', 'Perplexity', 'Copilot', 'X会员', 'Telegram会员', 'Midjourney']
+    if args.product:
+        products = args.product
     results = []
     row_shops = {id(r): s['shop_key'] for s in data['shops'] for r in s.get('listings', [])}
     async with httpx.AsyncClient(timeout=25, follow_redirects=True) as client:
         for product in products:
-            rows = [r for s in data['shops'] for r in s.get('listings', []) if r.get('product') == product
+            rows = [r for s in data['shops'] for r in s.get('listings', []) if r.get('classified_product', r.get('product')) == product
+                    and not r.get('comparison_exclusion')
                     and r.get('stock_status') != 'out' and r.get('stock') != 0 and r['currency'] == 'CNY']
             groups = {}
             for row in rows:
@@ -36,11 +41,26 @@ async def main():
                 g['n_prices'] += 1
                 g['rows'].append(row)
                 g['n_shops'] = len({row_shops[id(x)] for x in g['rows']})
+            if not groups and product == 'Grok Plus':
+                # Backward compatible with historical reports without exclusion metadata.
+                rows = [r for s in data['shops'] for r in s.get('listings', []) if r.get('product') == product
+                        and r.get('stock_status') != 'out' and r.get('stock') != 0 and r['currency'] == 'CNY'
+                        and r['spec'].get('delivery') != '成品号']
+                for row in rows:
+                    g = groups.setdefault(row['spec']['key'], {'product': product, 'spec': row['spec'], 'label': row['spec']['label'], 'n_prices': 0, 'rows': []})
+                    g['n_prices'] += 1
+                    g['rows'].append(row)
+                    g['n_shops'] = len({row_shops[id(x)] for x in g['rows']})
+            if not groups:
+                results.append(dict(product=product, passed=False, unavailable=True,
+                                    reason='已有证据没有在售、可验证的入门付费规格'))
+                print(product, '无合格报价', flush=True)
+                continue
             rows = min(groups.values(), key=representative_rank)['rows']
             r = min(rows, key=lambda x: Decimal(x['price']))
             url = r['url']
             origin = '{0.scheme}://{0.netloc}'.format(urlsplit(url))
-            result = dict(product=product, title=r['title'], price=r['price'], spec=r['spec']['label'],
+            result = dict(product=product, shop=row_shops[id(r)], title=r['title'], price=r['price'], spec=r['spec']['label'],
                           url=url, checked_at=dt.datetime.now(dt.timezone.utc).isoformat())
             cached = next((x for x in previous if x.get('passed') and x['url'] == url and x['title'] == r['title'] and Decimal(x['price']) == Decimal(r['price'])), None)
             if cached:
@@ -63,7 +83,7 @@ async def main():
                             if attempt == 4:
                                 proc = await asyncio.to_thread(subprocess.run, ['curl', '-fsS', '--max-time', '20',
                                     '-H', 'Content-Type: application/json', '--data', json.dumps({'goods_no': key}),
-                                    origin + '/shopApi/goods/detail'], capture_output=True, text=True)
+                                    origin + '/shopApi/goods/detail'], capture_output=True, text=True, timeout=25)
                                 body = json.loads(proc.stdout)
                                 break
                             await asyncio.sleep(2)
@@ -160,6 +180,8 @@ async def main():
                     if result['passed']: result.pop('error', None)
                 except Exception: pass
             results.append(result)
+            # 每条完成立即保存；外层超时中断后可从已完成证据继续。
+            previous_path.write_text(json.dumps(results, ensure_ascii=False, indent=2))
             print(product, r['price'], result['passed'], result.get('error', ''), flush=True)
             await asyncio.sleep(1)
     out = path.parent / (args.date + '-audit.json')
@@ -167,6 +189,9 @@ async def main():
     lines = ['# 10 条最低价逐条核对', '', '按每个标准商品代表规格的当前在售人民币最低价选样（入门月卡优先），重新读取对应商品页及其只读详情接口。', '',
              '| 商品 | 标题 | 采集价 | 详情价 | 规格 | 标题/价格/规格/链接 |', '|---|---|---:|---:|---|---|']
     for x in results:
+        if x.get('unavailable'):
+            lines.append(f'| {x["product"]} | 无合格报价 | — | — | — | {x["reason"]} |')
+            continue
         lines.append(f'| {x["product"]} | [{x["title"].replace("|", "/")}]({x["url"]}) | {x["price"]} | {x.get("actual_price", "失败")} | {x["spec"].replace("|", "/")} | {"四项一致" if x["passed"] else x.get("error", "存在差异")} |')
     path.with_name(args.date + '-audit.md').write_text('\n'.join(lines) + '\n')
 

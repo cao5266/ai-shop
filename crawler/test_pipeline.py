@@ -4,10 +4,28 @@ from sqlalchemy import create_engine, select, func
 from sqlalchemy.orm import Session
 from backend.models import Base, Listing, ListingPriceHistory
 from backend.importer import import_data
-from .normalize import classify, specification, listing, representative_rank
+from .normalize import classify, specification, listing, representative_rank, comparison_exclusion
 
 
 class PipelineTests(unittest.TestCase):
+    def test_entry_paid_offers_only(self):
+        cases = [
+            ('Cursor Pro 月卡 代充', 'Cursor', '120', False),
+            ('Cursor ultra月卡成品号', 'Cursor', '1165.5', True),
+            ('Muse 10亿token成品号 质保24小时', 'Muse', '1.9', True),
+            ('Muse 10亿token成品号 质保24小时', 'Muse', '8.7', True),
+            ('Perplexity Max 月卡 充值', 'Perplexity', '119', True),
+            ('Perplexity Pro 年卡', 'Perplexity', '229', True),
+            ('Telegram Premium 三个月会员充值', 'Telegram会员', '95.7', False),
+            ('Telegram Premium 一整年会员充值', 'Telegram会员', '242', True),
+            ('Claude Max 5x 月订阅 充值', 'Claude Max', '770', False),
+            ('Claude Max 20x 月卡 充值', 'Claude Max', '2052', True),
+            ('ChatGPT Plus 体验月卡 成品号', 'ChatGPT Plus', '1', True),
+        ]
+        for title, product, price, excluded in cases:
+            with self.subTest(title=title, price=price):
+                self.assertEqual(bool(comparison_exclusion(title, product, specification(title, product), price)), excluded)
+
     def test_specs_keep_duration_quota_delivery_separate(self):
         self.assertNotEqual(specification('Cursor 年卡 成品号')['key'], specification('Cursor 月卡 成品号')['key'])
         self.assertNotEqual(specification('Muse 10亿token 成品号')['key'], specification('Muse 1亿token 成品号')['key'])
