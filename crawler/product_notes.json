@@ -4,5 +4,23 @@
     "reason": "lumaoai.com 是工具教程导航，Copilot 出现在教程标题；tt.twitter.plus/item?id=46510 实际售卖 ChatGPT Plus，Copilot 仅出现在第三方账号管理工具的支持列表中。两条记录都不能证明店铺在售 Copilot，不能使用 ChatGPT 价格替代。",
     "checked_at": "2026-11-16",
     "urls": ["https://lumaoai.com/", "https://tt.twitter.plus/item?id=46510"]
+  },
+  "Cursor": {
+    "status": "店铺页未找到独立 Cursor Pro 月卡报价",
+    "reason": "本次已有采集数据中，Cursor 独立商品只有 Ultra 月卡成品号；含 Cursor Pro 的 Gork Premium 年卡和 Grok·X·Cursor 三合一商品均为组合权益，不能当作 Cursor Pro 月卡报价。未重新采集，等后续店铺出现独立 Pro 月卡后再纳入比较。",
+    "checked_at": "2026-11-16",
+    "urls": ["https://www.16688.com.cn/goods/G22668083", "https://loranai.top/item/499"]
+  },
+  "Muse": {
+    "status": "店铺页只有 Token 成品账号，未找到可核实的付费月卡",
+    "reason": "16688 的 ¥1.90 与 ¥8.70 商品均为含 10 亿 Token 的 Muse 成品账号，不是可比的付费订阅月卡；¥8.70 详情还说明积分来自邀请。按入门付费月卡口径，两者均不作为标准报价。",
+    "checked_at": "2026-11-16",
+    "urls": ["https://www.16688.com.cn/goods/G91690740"]
+  },
+  "Perplexity": {
+    "status": "店铺页未找到独立 Pro 月卡报价",
+    "reason": "现有数据只有 Perplexity Max 月卡和 Pro 年卡：Max 属高档，年卡不符合入门月卡口径，因此没有可比的 Pro 月卡报价。",
+    "checked_at": "2026-11-16",
+    "urls": ["https://ninghub.store/products/perplexity-max-code-1m", "https://ninghub.store/products/perplexity-pro-code-1y"]
   }
 }

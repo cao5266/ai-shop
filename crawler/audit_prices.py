@@ -12,15 +12,17 @@ from bs4 import BeautifulSoup
 from .normalize import specification, representative_rank
 
 ROOT = Path(__file__).resolve().parents[2]
+PRODUCT_NOTES = json.loads((Path(__file__).parent / 'product_notes.json').read_text())
 
 
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--date', default=dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat())
+    parser.add_argument('--input', help='已有采集快照 JSON；未指定时使用默认报告目录中的日期快照')
     parser.add_argument('--refresh', action='store_true', help='重新核实，不复用抽查缓存')
     parser.add_argument('--product', action='append', help='只核实指定商品，可重复')
     args = parser.parse_args()
-    path = ROOT / 'crawler/reports' / (args.date + '.json')
+    path = Path(args.input) if args.input else ROOT / 'crawler/reports' / (args.date + '.json')
     data = json.loads(path.read_text())
     previous_path = path.parent / (args.date + '-audit.json')
     previous = json.loads(previous_path.read_text()) if previous_path.exists() and not args.refresh else []
@@ -52,9 +54,11 @@ async def main():
                     g['rows'].append(row)
                     g['n_shops'] = len({row_shops[id(x)] for x in g['rows']})
             if not groups:
+                reason = PRODUCT_NOTES.get(product, {}).get(
+                    'reason', '已有证据没有在售、可验证的入门付费规格')
                 results.append(dict(product=product, passed=False, unavailable=True,
-                                    reason='已有证据没有在售、可验证的入门付费规格'))
-                print(product, '无合格报价', flush=True)
+                                    reason=reason))
+                print(product, '无合格报价：' + reason, flush=True)
                 continue
             rows = min(groups.values(), key=representative_rank)['rows']
             r = min(rows, key=lambda x: Decimal(x['price']))
@@ -186,13 +190,14 @@ async def main():
             await asyncio.sleep(1)
     out = path.parent / (args.date + '-audit.json')
     out.write_text(json.dumps(results, ensure_ascii=False, indent=2))
-    lines = ['# 10 条最低价逐条核对', '', '按每个标准商品代表规格的当前在售人民币最低价选样（入门月卡优先），重新读取对应商品页及其只读详情接口。', '',
-             '| 商品 | 标题 | 采集价 | 详情价 | 规格 | 标题/价格/规格/链接 |', '|---|---|---:|---:|---|---|']
+    lines = ['# 标准商品最低价抽查', '', '每个有合格报价的标准商品抽查一条代表规格最低价；复用同日已保存的商品详情证据或重新读取公开只读详情。没有合格报价的商品记录具体原因。', '',
+             '| 商品 | 店铺 | 商品页 | 采集价 | 页面价 | 标题/价格/规格/链接 |', '|---|---|---|---:|---:|---|']
     for x in results:
         if x.get('unavailable'):
-            lines.append(f'| {x["product"]} | 无合格报价 | — | — | — | {x["reason"]} |')
+            lines.append(f'| {x["product"]} | — | — | — | — | {x["reason"]} |')
             continue
-        lines.append(f'| {x["product"]} | [{x["title"].replace("|", "/")}]({x["url"]}) | {x["price"]} | {x.get("actual_price", "失败")} | {x["spec"].replace("|", "/")} | {"四项一致" if x["passed"] else x.get("error", "存在差异")} |')
+        checks = '/'.join('是' if x.get(k) else '否' for k in ('title_match', 'price_match', 'spec_match', 'link_match'))
+        lines.append(f'| {x["product"]} | {x.get("shop", "")} | [{x["title"].replace("|", "/")}]({x["url"]}) | {x["price"]} | {x.get("actual_price", "未核实")} | {checks if x.get("actual_price") is not None else x.get("error", "详情不可用")} |')
     path.with_name(args.date + '-audit.md').write_text('\n'.join(lines) + '\n')
 
 
