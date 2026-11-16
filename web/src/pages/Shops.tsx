@@ -84,10 +84,10 @@ export default function Shops() {
       </div>
 
       <div role="group" aria-label="按店铺类型筛选" className="mt-4 flex gap-2 overflow-x-auto pb-1">
-        {[{ name: '', count: home.data?.types.reduce((a, t) => a + t.count, 0) ?? 0, label: '全部' }, ...(home.data?.types.map((t) => ({ ...t, label: t.name })) ?? [])].map((t) => (
+        {[{ name: '', count: home.data ? home.data.types.reduce((a, t) => a + t.count, 0) : null, label: '全部' }, ...(home.data?.types.map((t) => ({ ...t, label: t.name })) ?? [])].map((t) => (
           <button key={t.name} type="button" aria-pressed={type === t.name} onClick={() => set('type', t.name)}
             className={cn('inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50', type === t.name ? 'border-foreground bg-foreground text-background' : 'bg-card hover:border-foreground/40')}>
-            {t.label}<span className="fig text-base opacity-70">{t.count}</span>
+            {t.label}{t.count != null && <span className="fig text-base opacity-70">{t.count}</span>}
           </button>
         ))}
       </div>

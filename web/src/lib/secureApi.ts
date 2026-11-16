@@ -78,3 +78,6 @@ export const qs = (o: Record<string, string | number | undefined>) => {
   const s = p.toString()
   return s ? '?' + s : ''
 }
+
+/** 页面一加载就先取会话密钥，与路由、首个数据请求并行，省掉一次串行等待（失败不影响，之后请求会重试） */
+export const prewarm = () => { if (!import.meta.env.VITE_MOCK) getSession().catch(() => {}) }

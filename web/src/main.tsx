@@ -7,7 +7,10 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { ThemeProvider } from '@/lib/theme'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { prewarm } from '@/lib/secureApi'
 import './styles.css'
+
+prewarm()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { InfoIcon } from 'lucide-react'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -17,11 +18,36 @@ import type { Offers, Spec, ToolDetail } from '@/lib/types'
 
 export default function ToolPage() {
   const name = decodeURIComponent(useParams().name ?? '')
+  return <ToolPageInner key={name} name={name} />   // 换商品时整页重置，避免短暂显示上一个商品的数据
+}
+
+/** 详情加载中的占位：规格列表 + 在售店铺列表（头部价格区在页面里单独占位） */
+function BodySkeleton() {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:gap-8" aria-hidden="true">
+      <section className="space-y-6">
+        <Skeleton className="h-7 w-28" />
+        {[3, 2].map((n, g) => (
+          <div key={g} className="space-y-2">
+            <Skeleton className="h-5 w-16" />
+            {Array.from({ length: n }, (_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
+          </div>
+        ))}
+      </section>
+      <section>
+        <Skeleton className="mb-4 h-7 w-48" />
+        <RowsSkeleton />
+      </section>
+    </div>
+  )
+}
+
+function ToolPageInner({ name }: { name: string }) {
   const [sp, setSp] = useSearchParams()
   const sort = sp.get('sort') ?? 'price-asc'
   const page = Number(sp.get('page') ?? 1) || 1
   const detail = useApi<ToolDetail>(`/api/v4/tools/${encodeURIComponent(name)}`)
-  const d = detail.data
+  const d = detail.loading ? null : detail.data   // d 为空 = 还在加载，此时不能显示「暂无报价 / 0」
   // /tools/:name 已返回全量规格；若少于 n_specs（接口分页），按 total_pages 翻页补全
   const all = useAllSpecs(name, d?.specs, d?.n_specs)
   const specs: Spec[] = all.specs ?? []
@@ -77,16 +103,17 @@ export default function ToolPage() {
         <div className="flex items-end gap-6 border-t pt-5 md:border-t-0 md:border-l md:pt-0 md:pl-8">
           <div>
             <p className="mb-1 text-sm text-muted-foreground">全部规格最低价</p>
-            {price != null ? <Price value={price} currency={d?.currency ?? 'CNY'} big /> : <span className="text-muted-foreground">暂无报价</span>}
+            {!d ? <Skeleton className="h-12 w-36" aria-hidden="true" /> : price != null ? <Price value={price} currency={d.currency ?? 'CNY'} big /> : <span className="text-muted-foreground">暂无报价</span>}
           </div>
           <dl className="grid grid-cols-2 gap-x-6 pb-1 text-sm">
-            <div><dd className="fig text-2xl font-semibold">{d?.n_specs ?? specs.length}</dd><dt className="text-muted-foreground">个规格</dt></div>
-            <div><dd className="fig text-2xl font-semibold">{shopsTotal}</dd><dt className="text-muted-foreground">家在售</dt></div>
+            <div><dd className="fig text-2xl font-semibold">{d ? d.n_specs : <Skeleton className="h-8 w-8" aria-hidden="true" />}</dd><dt className="text-muted-foreground">个规格</dt></div>
+            <div><dd className="fig text-2xl font-semibold">{d ? shopsTotal : <Skeleton className="h-8 w-8" aria-hidden="true" />}</dd><dt className="text-muted-foreground">家在售</dt></div>
           </dl>
         </div>
       </header>
       {d && d.updated_at && <p className="-mt-4 mb-6 text-sm text-muted-foreground">价格更新于 {when(d.updated_at, true)}{specs.length > 0 && d.note ? '。' + d.note : ''}</p>}
 
+      {!d && <BodySkeleton />}
       {d && !specs.length && (
         <EmptyState title={d.sold_out[0] ? `曾标价 ${money(d.sold_out[0].lowest_price, d.sold_out[0].currency)}，已售罄` : d.status ?? '暂未采到价格'} hint={d.note && d.note !== (d.sold_out[0] ? '' : d.status) ? d.note : undefined} action={{ to: '/shops', label: '查看全部店铺' }} />
       )}
