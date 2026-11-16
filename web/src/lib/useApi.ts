@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from './secureApi'
-import type { ToolSpecs } from './types'
+import type { Spec, ToolSpecs } from './types'
 
 export interface State<T> { data: T | null; error: string | null; loading: boolean; reload: () => void }
 
@@ -29,23 +29,31 @@ export function useApi<T>(path: string | null): State<T> {
   return { data, error, loading, reload }
 }
 
-const catalogPath = (name: string) => `/api/v4/catalog/${encodeURIComponent(name)}/specs`
+const PAGE_SIZE = 100
+const MAX_PAGES = 20   // 防御：最多翻 20 页（2000 组），避免后端异常时无限翻页
 
-/** 批量取多个商品的规格目录；某个商品失败只是缺席，不影响其他。 */
-export function useCatalogs(names: string[]) {
-  const [map, setMap] = useState<Record<string, ToolSpecs>>({})
-  const [done, setDone] = useState(false)
-  const key = names.join('\n')
+/**
+ * 补全规格：/tools/:name 已带全量 specs 时不请求；少于 n_specs 时才按 total_pages 翻页取全
+ * （page_size=100，每页一次请求），用于接口改为只返回部分规格的情况。
+ */
+export function useAllSpecs(name: string, have: Spec[] | undefined, total: number | undefined) {
+  const [full, setFull] = useState<{ name: string; specs: Spec[] } | null>(null)
+  const [error, setError] = useState(false)
+  const need = !!have && total != null && have.length < total
   useEffect(() => {
-    if (!names.length) return
+    if (!need) return
     let alive = true
-    setDone(false)
-    Promise.all(names.map((n) => api<ToolSpecs>(catalogPath(n)).then((d) => [n, d] as const).catch(() => null)))
-      .then((rs) => { if (alive) { setMap(Object.fromEntries(rs.filter(Boolean) as [string, ToolSpecs][])); setDone(true) } })
+    setError(false)
+    ;(async () => {
+      const out: Spec[] = []
+      let pages = 1
+      for (let p = 1; p <= Math.min(pages, MAX_PAGES); p++) {
+        const r = await api<ToolSpecs>(`/api/v4/catalog/${encodeURIComponent(name)}/specs?page=${p}&page_size=${PAGE_SIZE}`)
+        out.push(...r.specs); pages = r.total_pages
+      }
+      if (alive) setFull({ name, specs: out })
+    })().catch(() => alive && setError(true))
     return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
-  return { catalogs: map, done }
+  }, [name, need])
+  return { specs: need ? (full?.name === name ? full.specs : have!) : have, partial: need && full?.name !== name, error }
 }
-
-export const useCatalog = (name: string, enabled = true) => useApi<ToolSpecs>(enabled ? catalogPath(name) : null)

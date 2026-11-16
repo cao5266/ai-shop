@@ -5,7 +5,7 @@
 // 默认前端走真实接口；这里只在离线演示（npm run dev -- --mode mock）时按真实接口的形状造数据：
 //   /api/v4/home, /api/v4/tools/:name, /api/v4/catalog/:name/specs, /api/v4/tools/:name/offers
 // =====================================================================
-import type { Home, OfferItem, Offers, ShopItem, Shops, SpecInfo, ToolSpecs } from '@/lib/types'
+import type { Home, OfferItem, Offers, ShopItem, Shops, Spec, ToolSpecs } from '@/lib/types'
 
 interface MockSpec {
   key: string; kind: string; duration: string | null; tier: string | null; delivery: string | null
@@ -13,14 +13,20 @@ interface MockSpec {
 }
 type MockTool = { name: string; vendor: string; category: string; tagline: string; specs: MockSpec[]; members: string[] }
 const DUR: Record<string, string> = { '1 个月': '1月', '12 个月': '1年', '3 个月': '3月' }
-const toInfo = (name: string, s: MockSpec): SpecInfo => {
+const toInfo = (_name: string, s: MockSpec): Spec => {
   const delivery = s.delivery ?? '未注明交付'
+  const period = s.duration ? DUR[s.duration] ?? s.duration : null
+  const tier = s.tier ? s.tier.toLowerCase() : null
   return {
-    key: s.key, label: [DUR[s.duration ?? ''] ?? s.duration, s.tier?.toLowerCase(), delivery].filter(Boolean).join(' / '),
-    currency: s.currency, product: name, title: null, min: s.min, max: s.max, n_prices: s.n_offers, n_shops: s.n_shops,
-    duration: s.duration ? DUR[s.duration] ?? s.duration : null, tier: s.tier ? [s.tier.toLowerCase()] : [],
-    delivery_type: delivery, quota: [], region: [], incomplete: false,
+    key: s.key, label: [period ?? '时长未注明', tier, delivery].filter(Boolean).join(' / '), currency: s.currency,
+    tier, period, delivery, lowest_price: s.min, lowest_shop: s.lowest_shop ? { name: s.lowest_shop, shop_key: 'mock.example' } : null,
+    shop_count: s.n_shops, listing_count: s.n_offers,
   }
+}
+const entryOf = (t: MockTool) => {
+  const m = t.specs.filter((s) => s.duration === '1 个月'); const e = (m.length ? m : t.specs).reduce((a, b) => (b.min < a.min ? b : a))
+  const i = toInfo(t.name, e)
+  return { entry_spec: { name: i.label, label: i.label, tier: i.tier ?? null, period: i.period ?? null, delivery: i.delivery ?? '' }, entry_price: e.min, entry_shop_count: e.n_shops }
 }
 
 let seq = 0
@@ -141,7 +147,7 @@ export const MOCK_HOME: Home = {
       name: t.name, members: t.members, n_shops: t.specs.reduce((a, s) => a + s.n_shops, 0),
       n_selling: Math.max(...t.specs.map((s) => s.n_shops)) + Math.round(t.specs.length * 3),
       n_offers: t.specs.reduce((a, s) => a + s.n_offers, 0), price: lo.min, currency: 'CNY',
-      spec: toInfo(t.name, lo).label, n_specs: t.specs.length, status: null, sold_out: [],
+      spec: toInfo(t.name, lo).label, n_specs: t.specs.length, status: null, sold_out: [], starting_price: lo.min, ...entryOf(t),
     }
   }),
   types: [{ name: '独立站', count: 118 }, { name: '发卡平台', count: 71 }, { name: '社群店', count: 35 }],
@@ -177,8 +183,10 @@ export function mockApi(path: string): unknown {
     const name = decodeURIComponent(m[1])
     const t = MOCK_TOOLS.find((x) => x.name === name)
     if (!t) throw Object.assign(new Error('404'), { status: 404 })
-    return { product: name, updated_at: MOCK_HOME.updated_at, n_specs: t.specs.length, starting_price: t.specs[0].min, currency: 'CNY',
-      specs: t.specs.map((s) => toInfo(name, s)) } satisfies ToolSpecs
+    const size = Number(q.get('page_size') ?? 50), pg = Number(q.get('page') ?? 1)
+    return { product: name, updated_at: MOCK_HOME.updated_at, n_specs: t.specs.length, page: pg, page_size: size,
+      total_pages: Math.max(1, Math.ceil(t.specs.length / size)), starting_price: t.specs[0].min, currency: 'CNY', ...entryOf(t),
+      specs: t.specs.slice((pg - 1) * size, pg * size).map((s) => toInfo(name, s)) } satisfies ToolSpecs
   }
   m = p.match(/^\/api\/v4\/tools\/([^/]+)$/)
   if (m) {
@@ -186,7 +194,7 @@ export function mockApi(path: string): unknown {
     const base = MOCK_HOME.tools.find((x) => x.name === name)
     if (!base) throw Object.assign(new Error('404'), { status: 404 })
     const t = MOCK_TOOLS.find((x) => x.name === name)!
-    return { ...base, note: null, updated_at: MOCK_HOME.updated_at, specs: t.specs.map((s) => toInfo(name, s)) }
+    return { ...base, note: null, updated_at: MOCK_HOME.updated_at, n_selling: base.n_selling, specs: t.specs.map((s) => toInfo(name, s)) }
   }
   if (p === '/api/v4/shops') {
     let items = allShops.filter((s) => (!q.get('type') || s.type === q.get('type')) && (!q.get('product') || s.products.includes(q.get('product')!))

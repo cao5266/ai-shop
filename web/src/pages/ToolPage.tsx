@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { InfoIcon } from 'lucide-react'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
@@ -8,12 +8,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { EmptyState, ErrorState, GoButton, LowestBadge, Pager, Price, RowsSkeleton } from '@/components/Bits'
 import { Tile } from '@/components/Brand'
-import { useApi, useCatalog } from '@/lib/useApi'
+import { useAllSpecs, useApi } from '@/lib/useApi'
 import { qs } from '@/lib/secureApi'
 import { money, when } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { durationGroup, specName, toolMeta } from '@/lib/spec'
-import type { Offers, SpecInfo, ToolDetail } from '@/lib/types'
+import { durationGroup, lowestShopName, periodText, specName, toolMeta } from '@/lib/spec'
+import type { Offers, Spec, ToolDetail } from '@/lib/types'
 
 export default function ToolPage() {
   const name = decodeURIComponent(useParams().name ?? '')
@@ -22,15 +22,15 @@ export default function ToolPage() {
   const page = Number(sp.get('page') ?? 1) || 1
   const detail = useApi<ToolDetail>(`/api/v4/tools/${encodeURIComponent(name)}`)
   const d = detail.data
-  const catalog = useCatalog(name, !!d && d.specs.length > 0)
-  // 以 /tools/:name 的 specs 为准（顺序、n_prices），用 catalog 的结构化字段补全；catalog 失败时退回 label
-  const specs: SpecInfo[] = useMemo(() => {
-    const extra = new Map((catalog.data?.specs ?? []).map((s) => [s.key, s]))
-    return (d?.specs ?? []).map((s) => ({ ...s, ...(extra.get(s.key) ?? {}) }))
-  }, [d, catalog.data])
-  const [showRest, setShowRest] = useState(false)
-  const active = sp.get('spec') || d?.specs[0]?.key || ''
-  const offers = useApi<Offers>(d && d.specs.length ? `/api/v4/tools/${encodeURIComponent(name)}/offers${qs({ spec: active, sort, page, size: 20 })}` : null)
+  // /tools/:name 已返回全量规格；若少于 n_specs（接口分页），按 total_pages 翻页补全
+  const all = useAllSpecs(name, d?.specs, d?.n_specs)
+  const specs: Spec[] = all.specs ?? []
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  // spec 参数可以是 key（页面内选择），也可以是 label（首页价目板链接，接口入门档不带 key）
+  const want = sp.get('spec')
+  const cur = specs.find((s) => s.key === want) ?? (want ? specs.find((s) => s.label === want && s.currency === 'CNY') : undefined) ?? specs[0]
+  const active = cur?.key ?? ''
+  const offers = useApi<Offers>(d && cur ? `/api/v4/tools/${encodeURIComponent(name)}/offers${qs({ spec: active, sort, page, size: 20 })}` : null)
   useEffect(() => { document.title = `${name} 价格对比 | AI 订阅比价` }, [name])
 
   const update = (k: string, v: string, resetPage = true) => {
@@ -53,13 +53,14 @@ export default function ToolPage() {
   if (detail.error) return <>{crumbs}<ErrorState message={detail.error} retry={detail.reload} /></>
 
   const meta = toolMeta(name)
-  const complete = specs.filter((s) => !s.incomplete)
-  const rest = specs.filter((s) => s.incomplete)
-  const groups = Array.from(new Set(complete.map((s) => durationGroup(s.duration)))).map((k) => ({ kind: k, items: complete.filter((s) => durationGroup(s.duration) === k) }))
-  const restOpen = showRest || rest.some((s) => s.key === active)
-  const shown = restOpen ? [...groups, { kind: '信息不全，按原标题单独比', items: rest }] : groups
-  const cur = specs.find((s) => s.key === active)
+  const GROUP_LIMIT = 8
+  const groups = Array.from(new Set(specs.map((s) => durationGroup(s.period)))).map((k) => {
+    const items = specs.filter((s) => durationGroup(s.period) === k)
+    const open = expanded[k] || items.length <= GROUP_LIMIT || items.some((s) => s.key === active)
+    return { kind: k, items: open ? items : items.slice(0, GROUP_LIMIT), hidden: open ? 0 : items.length - GROUP_LIMIT }
+  })
   const shopsTotal = d?.n_selling ?? 0
+  const price = d?.starting_price ?? d?.price ?? null
 
   return (
     <>
@@ -76,7 +77,7 @@ export default function ToolPage() {
         <div className="flex items-end gap-6 border-t pt-5 md:border-t-0 md:border-l md:pt-0 md:pl-8">
           <div>
             <p className="mb-1 text-sm text-muted-foreground">全部规格最低价</p>
-            {d?.price != null ? <Price value={d.price} currency={d.currency ?? 'CNY'} big /> : <span className="text-muted-foreground">暂无报价</span>}
+            {price != null ? <Price value={price} currency={d?.currency ?? 'CNY'} big /> : <span className="text-muted-foreground">暂无报价</span>}
           </div>
           <dl className="grid grid-cols-2 gap-x-6 pb-1 text-sm">
             <div><dd className="fig text-2xl font-semibold">{d?.n_specs ?? specs.length}</dd><dt className="text-muted-foreground">个规格</dt></div>
@@ -87,12 +88,12 @@ export default function ToolPage() {
       {d && d.updated_at && <p className="-mt-4 mb-6 text-sm text-muted-foreground">价格更新于 {when(d.updated_at, true)}{specs.length > 0 && d.note ? '。' + d.note : ''}</p>}
 
       {d && !specs.length && (
-        <EmptyState title={d.sold_out[0] ? `曾标价 ${money(d.sold_out[0].min, d.sold_out[0].currency)}，已售罄` : d.status ?? '暂未采到价格'} hint={d.note ?? undefined} action={{ to: '/shops', label: '查看全部店铺' }} />
+        <EmptyState title={d.sold_out[0] ? `曾标价 ${money(d.sold_out[0].lowest_price, d.sold_out[0].currency)}，已售罄` : d.status ?? '暂未采到价格'} hint={d.note && d.note !== (d.sold_out[0] ? '' : d.status) ? d.note : undefined} action={{ to: '/shops', label: '查看全部店铺' }} />
       )}
 
       {d && specs.length > 0 && (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start lg:gap-8">
-          <section aria-labelledby="spec-h" className="min-w-0 lg:sticky lg:top-20">
+          <section aria-labelledby="spec-h" className="min-w-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
             <div className="mb-3 flex items-center justify-between">
               <h2 id="spec-h" className="text-lg font-semibold">选择规格</h2>
               <Dialog>
@@ -106,7 +107,7 @@ export default function ToolPage() {
               </Dialog>
             </div>
             <RadioGroup value={active} onValueChange={(v) => update('spec', v)} aria-label="规格" className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 lg:mx-0 lg:block lg:space-y-6 lg:overflow-visible lg:px-0 lg:pb-0">
-              {shown.map((g) => (
+              {groups.map((g) => (
                 <div key={g.kind} className="max-lg:contents">
                   <p className="mb-2 hidden items-center gap-2 text-sm font-medium text-muted-foreground lg:flex">{g.kind}</p>
                   <div className="max-lg:contents lg:space-y-2">
@@ -115,27 +116,25 @@ export default function ToolPage() {
                         <span className="absolute size-px overflow-hidden opacity-0"><RadioGroupItem value={s.key} /></span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium" title={specName(s)}>{specName(s)}</span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">{s.duration ?? '时长未注明'}，{s.n_shops} 家在售</span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">{periodText(s)}，{s.shop_count} 家在售</span>
                         </span>
-                        <Price value={s.min} currency={s.currency} suffix="" className="[&>span]:text-2xl" />
+                        <Price value={s.lowest_price} currency={s.currency} suffix="" className="[&>span]:text-2xl" />
                       </label>
                     ))}
                   </div>
+                  {g.hidden > 0 && <button type="button" onClick={() => setExpanded((e) => ({ ...e, [g.kind]: true }))} className="mt-2 hidden h-10 w-full rounded-xl border border-dashed text-sm text-muted-foreground hover:border-foreground/40 lg:block">展开其余 {g.hidden} 个规格</button>}
                 </div>
               ))}
             </RadioGroup>
-            {rest.length > 0 && (
-              <Button variant="outline" className="mt-3 h-10 w-full bg-card" onClick={() => setShowRest((v) => !v)} aria-expanded={restOpen}>
-                {restOpen ? '收起信息不全的规格' : `另有 ${rest.length} 个信息不全的规格`}
-              </Button>
-            )}
+            {all.partial && <p className="mt-3 text-xs text-muted-foreground">正在加载其余规格……</p>}
+            {all.error && <p className="mt-3 text-xs text-destructive">部分规格没有加载成功，请刷新重试。</p>}
           </section>
 
           <section aria-labelledby="shops-h" className="min-w-0">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 id="shops-h" className="text-lg font-semibold">{cur ? specName(cur) : '在售店铺'}</h2>
-                {cur && <p className="mt-0.5 text-sm text-muted-foreground">{cur.duration ?? '时长未注明'}，{cur.n_shops} 家在售，{cur.min === cur.max ? money(cur.min, cur.currency) : `${money(cur.min, cur.currency)} 到 ${money(cur.max, cur.currency)}`}{cur.incomplete ? '，规格信息不全，仅与同标题商品比较' : ''}</p>}
+                {cur && <p className="mt-0.5 text-sm text-muted-foreground">{periodText(cur)}，{cur.shop_count} 家在售，最低 {money(cur.lowest_price, cur.currency)}{lowestShopName(cur) ? `（${lowestShopName(cur)}）` : ''}</p>}
               </div>
               <Select value={sort} onValueChange={(v) => update('sort', v === 'price-asc' ? '' : v)}>
                 <SelectTrigger aria-label="排序" className="h-10 w-40 bg-card"><SelectValue /></SelectTrigger>

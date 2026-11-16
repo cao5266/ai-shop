@@ -1,9 +1,8 @@
-import type { SpecInfo, Tool } from './types'
+import type { Spec, Tool } from './types'
 
-const uniq = (a?: string[] | null) => Array.from(new Set((a ?? []).filter(Boolean)))
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+const cap = (s: string) => s.replace(/^[a-z]/, (c) => c.toUpperCase())
 
-/** 时长分组名：1月→月卡，1年→年卡，其余原样；缺失 → 时长未注明 */
+/** 周期分组名：1月→月卡，1年→年卡，3月→季卡，其余原样；缺失 → 时长未注明 */
 export function durationGroup(d?: string | null): string {
   if (!d) return '时长未注明'
   if (d === '1月') return '月卡'
@@ -12,25 +11,16 @@ export function durationGroup(d?: string | null): string {
   return d
 }
 
-/** 规格名（不含时长）：优先用结构化字段拼，缺失时退回 label，最后给兜底文案 */
-export function specName(s: SpecInfo): string {
-  if (s.incomplete && s.title) return s.title
-  const parts = [...uniq(s.tier).map(cap), ...uniq(s.quota), ...uniq(s.region)]
-  const main = parts.join(' ')
-  const delivery = s.delivery_type && s.delivery_type !== '未注明交付' ? s.delivery_type : ''
-  return [main, delivery].filter(Boolean).join(' ') || (s.label ?? '').split(' / ').filter((x) => x !== '时长未注明').join(' ') || '未命名规格'
+/** 规格名（不含周期）：取 label 去掉开头的周期，再逐段首字母大写；缺失时用 tier + delivery 兜底 */
+export function specName(s: Pick<Spec, 'label' | 'tier' | 'delivery'>): string {
+  const parts = (s.label ?? '').split(' / ').map((x) => x.trim()).filter(Boolean)
+  if (parts[0] === '时长未注明' || /^\d+(天|月|年)$/.test(parts[0] ?? '')) parts.shift()
+  const name = parts.map(cap).join(' ')
+  return name || [s.tier ? cap(s.tier) : '', s.delivery && s.delivery !== '未注明交付' ? s.delivery : ''].filter(Boolean).join(' ') || '未命名规格'
 }
 
-/** 规格完整描述：时长 + 名称，用于标题或副标题 */
-export const specFull = (s: SpecInfo) => `${s.duration ?? '时长未注明'} ${specName(s)}`
-
-/** 同一规格的入门价：已按完整规格过滤，优先 1 月，再取最低价 */
-export function entrySpec(specs: SpecInfo[]): SpecInfo | null {
-  const ok = specs.filter((s) => !s.incomplete && s.currency === 'CNY' && Number.isFinite(s.min))
-  const monthly = ok.filter((s) => s.duration === '1月')
-  const pool = monthly.length ? monthly : ok
-  return pool.reduce<SpecInfo | null>((m, s) => (!m || s.min < m.min ? s : m), null)
-}
+export const periodText = (s: { period?: string | null }) => s.period ?? '时长未注明'
+export const lowestShopName = (s: Spec) => s.lowest_shop?.name || null
 
 // ---- 前端自带的展示元数据：接口目前不返回厂商、分类、简介 ----
 const META: Record<string, { vendor: string; category: string; tagline: string }> = {

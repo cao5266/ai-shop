@@ -5,34 +5,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState, Price } from '@/components/Bits'
 import { Tile } from '@/components/Brand'
 import { SearchInput } from '@/components/SearchInput'
-import { useApi, useCatalogs } from '@/lib/useApi'
-import { entrySpec, specName, toolCategory, toolMeta } from '@/lib/spec'
+import { useApi } from '@/lib/useApi'
+import { periodText, specName, toolCategory, toolMeta } from '@/lib/spec'
 import { money, when } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import type { Home as HomeData, SpecInfo, Tool, ToolSpecs } from '@/lib/types'
+import type { Home as HomeData, Tool } from '@/lib/types'
 
-function SpecLine({ s, lowest }: { s: SpecInfo; lowest: boolean }) {
-  return (
-    <li className="flex items-baseline gap-2 text-sm">
-      <span className="shrink-0 text-xs text-muted-foreground">{s.duration ?? '时长未注明'}</span>
-      <span className="min-w-0 truncate font-medium">{specName(s)}</span>
-      <span aria-hidden="true" className="mb-1 min-w-3 flex-1 self-end border-b border-dotted border-foreground/25" />
-      <span className={cn('fig shrink-0 text-lg font-semibold', lowest ? 'text-price' : 'text-foreground')}>{money(s.min, s.currency)}</span>
-    </li>
-  )
-}
-
-function ToolCard({ t, catalog }: { t: Tool; catalog?: ToolSpecs }) {
-  const specs = catalog?.specs
-  // 大字起价与下方规格行同源（规格接口的 starting_price）；规格接口没返回时退回 /home 的 price
-  const price = catalog?.starting_price ?? t.price
-  const currency = catalog?.starting_price != null ? catalog.currency : t.currency
+function ToolCard({ t }: { t: Tool }) {
   const meta = toolMeta(t.name)
-  // 卡片里展示的规格：优先完整规格，按最低价排序取前 3 个
-  const complete = (specs ?? []).filter((s) => !s.incomplete && s.currency === 'CNY').sort((a, b) => a.min - b.min)
-  const shown = complete.slice(0, 3)
-  const low = shown[0]
-  const spread = low && low.max > 0 ? Math.round((1 - low.min / low.max) * 100) : 0
+  const price = t.starting_price ?? t.price
+  const e = t.entry_spec
   return (
     <Link to={`/tool/${encodeURIComponent(t.name)}`} className="card group flex h-full flex-col rounded-2xl border bg-card p-5 outline-none transition-colors hover:border-foreground/30 focus-visible:ring-3 focus-visible:ring-ring/50">
       <div className="flex items-start gap-3">
@@ -44,16 +26,19 @@ function ToolCard({ t, catalog }: { t: Tool; catalog?: ToolSpecs }) {
         <span className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">{t.n_selling} 家在售</span>
       </div>
 
-      <div className="mt-5 flex items-end justify-between gap-3">
-        {price != null ? <Price value={price} currency={currency ?? 'CNY'} big suffix="起" className="[&>span:first-child]:text-5xl" /> : <span className="text-sm text-muted-foreground">{t.status ?? '暂未采到价格'}</span>}
-        {low && spread > 0 && <p className="pb-1 text-right text-xs leading-snug text-muted-foreground">最高 <span className="fig text-sm font-semibold text-foreground">{money(low.max, low.currency)}</span><br />价差 {spread}%</p>}
+      <div className="mt-5">
+        {price != null ? <Price value={price} currency={t.currency ?? 'CNY'} big suffix="起" className="[&>span:first-child]:text-5xl" /> : <span className="text-sm leading-relaxed text-muted-foreground">{t.status ?? '暂未采到价格'}</span>}
       </div>
 
-      {shown.length > 0 && (
-        <ul className="mt-4 space-y-1.5 border-t pt-4">
-          {shown.map((s, i) => <SpecLine key={s.key} s={s} lowest={i === 0} />)}
-        </ul>
+      {e && t.entry_price != null && (
+        <div className="mt-4 flex items-baseline gap-2 border-t pt-4 text-sm">
+          <span className="shrink-0 text-xs text-muted-foreground">入门档</span>
+          <span className="min-w-0 truncate font-medium">{[e.period, specName(e)].filter(Boolean).join(' ')}</span>
+          <span aria-hidden="true" className="mb-1 min-w-3 flex-1 self-end border-b border-dotted border-foreground/25" />
+          <span className="fig shrink-0 text-lg font-semibold">{money(t.entry_price, t.currency ?? 'CNY')}</span>
+        </div>
       )}
+      {e && t.entry_shop_count ? <p className="mt-1 text-xs text-muted-foreground">该规格 {t.entry_shop_count} 家在售</p> : null}
 
       <div className="mt-auto flex items-center justify-between pt-4 text-sm">
         <span className="text-muted-foreground">{t.n_specs > 0 ? <>共 <span className="fig text-base font-semibold text-foreground">{t.n_specs}</span> 个规格</> : '暂无在售规格'}</span>
@@ -73,33 +58,32 @@ function CardSkeleton() {
   )
 }
 
-/** 价目板：每个商品取“入门档”（完整规格、优先 1 月、最低价），按在售店铺数挑最热门的 6 个 */
-function Board({ tools, catalogs }: { tools: Tool[]; catalogs: Record<string, ToolSpecs> }) {
-  const rows = tools
-    .map((t) => ({ t, s: entrySpec(catalogs[t.name]?.specs ?? []) }))
-    .filter((r): r is { t: Tool; s: SpecInfo } => !!r.s)
-    .sort((a, b) => b.t.n_selling - a.t.n_selling)
-    .slice(0, 6)
+/** 价目板：直接用 /home 每个商品的入门档（entry_spec / entry_price），按在售店铺数取最热门的 6 个 */
+function Board({ tools }: { tools: Tool[] }) {
+  const rows = tools.filter((t) => t.entry_spec && t.entry_price != null).sort((a, b) => b.n_selling - a.n_selling).slice(0, 6)
   if (!rows.length) return null
   return (
     <aside aria-label="入门档最低价" className="hidden rounded-2xl border bg-card lg:block">
       <div className="flex items-baseline justify-between border-b px-5 py-3.5">
         <h2 className="text-sm font-semibold">入门档最低价</h2>
-        <span className="text-xs text-muted-foreground">优先 1 月 / 人民币</span>
+        <span className="text-xs text-muted-foreground">优先月卡 / 人民币</span>
       </div>
       <ul className="divide-y">
-        {rows.map(({ t, s }) => (
-          <li key={t.name}>
-            <Link to={`/tool/${encodeURIComponent(t.name)}?spec=${encodeURIComponent(s.key)}`} className="flex items-center gap-3 px-5 py-3 outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted">
-              <Tile name={t.name} size="xs" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{t.name} <span className="font-normal text-muted-foreground">{specName(s)}</span></p>
-                <p className="truncate text-xs text-muted-foreground">{s.duration ?? '时长未注明'}，共 {s.n_shops} 家在售</p>
-              </div>
-              <span className="fig text-2xl font-semibold text-price"><span className="mr-0.5 text-[0.62em] font-medium">¥</span>{new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(s.min)}</span>
-            </Link>
-          </li>
-        ))}
+        {rows.map((t) => {
+          const e = t.entry_spec!
+          return (
+            <li key={t.name}>
+              <Link to={`/tool/${encodeURIComponent(t.name)}?spec=${encodeURIComponent(e.label)}`} className="flex items-center gap-3 px-5 py-3 outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted">
+                <Tile name={t.name} size="xs" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{t.name} <span className="font-normal text-muted-foreground">{specName(e).split(' ').filter((w) => !t.name.toLowerCase().split(' ').includes(w.toLowerCase())).join(' ')}</span></p>
+                  <p className="truncate text-xs text-muted-foreground">{periodText(e)}，共 {t.entry_shop_count ?? 0} 家在售</p>
+                </div>
+                <span className="fig text-2xl font-semibold text-price"><span className="mr-0.5 text-[0.62em] font-medium">¥</span>{new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(t.entry_price!)}</span>
+              </Link>
+            </li>
+          )
+        })}
       </ul>
     </aside>
   )
@@ -108,7 +92,6 @@ function Board({ tools, catalogs }: { tools: Tool[]; catalogs: Record<string, To
 export default function Home() {
   const { data, error, loading, reload } = useApi<HomeData>('/api/v4/home')
   const [cat, setCat] = useState('全部')
-  const { catalogs } = useCatalogs(useMemo(() => data?.tools.filter((t) => t.n_specs > 0).map((t) => t.name) ?? [], [data]))
   useEffect(() => { document.title = 'AI 订阅比价' }, [])
   const cats = useMemo(() => ['全部', ...Array.from(new Set(data?.tools.map(toolCategory) ?? []))], [data])
   const tools = data?.tools.filter((t) => cat === '全部' || toolCategory(t) === cat) ?? []
@@ -128,7 +111,7 @@ export default function Home() {
             <div className="hidden sm:block"><dd className="pt-2 text-sm">{data ? when(data.updated_at, true) : '—'}</dd><dt className="text-muted-foreground">价格更新时间</dt></div>
           </dl>
         </div>
-        {data && <Board tools={data.tools} catalogs={catalogs} />}
+        {data && <Board tools={data.tools} />}
       </section>
 
       <section aria-labelledby="tools-h">
@@ -144,7 +127,7 @@ export default function Home() {
         </div>
         {error ? <ErrorState message={error} retry={reload} /> : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {loading && !data ? Array.from({ length: 6 }, (_, i) => <CardSkeleton key={i} />) : tools.map((t) => <ToolCard key={t.name} t={t} catalog={catalogs[t.name]} />)}
+            {loading && !data ? Array.from({ length: 6 }, (_, i) => <CardSkeleton key={i} />) : tools.map((t) => <ToolCard key={t.name} t={t} />)}
           </div>
         )}
       </section>
