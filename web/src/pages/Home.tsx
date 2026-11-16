@@ -6,7 +6,7 @@ import { ErrorState, Price } from '@/components/Bits'
 import { Tile } from '@/components/Brand'
 import { SearchInput } from '@/components/SearchInput'
 import { useApi } from '@/lib/useApi'
-import { periodText, specName, toolCategory, toolMeta } from '@/lib/spec'
+import { hasOffer, periodText, specName, toolCategory, toolMeta } from '@/lib/spec'
 import { money, when } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Home as HomeData, Tool } from '@/lib/types'
@@ -93,8 +93,9 @@ export default function Home() {
   const { data, error, loading, reload } = useApi<HomeData>('/api/v4/home')
   const [cat, setCat] = useState('全部')
   useEffect(() => { document.title = 'AI 订阅比价' }, [])
-  const cats = useMemo(() => ['全部', ...Array.from(new Set(data?.tools.map(toolCategory) ?? []))], [data])
-  const tools = data?.tools.filter((t) => cat === '全部' || toolCategory(t) === cat) ?? []
+  const shown = useMemo(() => data?.tools.filter(hasOffer) ?? [], [data])
+  const cats = useMemo(() => ['全部', ...Array.from(new Set(shown.map(toolCategory)))], [shown])
+  const tools = shown.filter((t) => cat === '全部' || toolCategory(t) === cat)
   return (
     <>
       <section className="grid items-center gap-10 py-10 md:py-14 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-14">
@@ -105,13 +106,13 @@ export default function Home() {
           <p className="mt-4 mb-7 max-w-lg text-base leading-relaxed text-muted-foreground text-pretty md:text-lg">月卡、年卡、成品号、代充、组合套餐，规格不同的商品分开比，同一规格下谁最便宜一目了然。</p>
           <div className="max-w-xl"><SearchInput large /></div>
           <dl className="mt-7 flex gap-8 text-sm">
-            {[['店铺', data ? `${data.total_shops}` : '—'], ['商品', data ? `${data.tools.length}` : '—'], ['规格', data ? `${data.tools.reduce((a, t) => a + t.n_specs, 0)}` : '—']].map(([k, v]) => (
+            {[['店铺', data ? `${data.total_shops}` : '—'], ['商品', data ? `${shown.length}` : '—'], ['规格', data ? `${shown.reduce((a, t) => a + t.n_specs, 0)}` : '—']].map(([k, v]) => (
               <div key={k}><dd className="fig text-3xl font-semibold">{v}</dd><dt className="text-muted-foreground">{k}</dt></div>
             ))}
             <div className="hidden sm:block"><dd className="pt-2 text-sm">{data ? when(data.updated_at, true) : '—'}</dd><dt className="text-muted-foreground">价格更新时间</dt></div>
           </dl>
         </div>
-        {data && <Board tools={data.tools} />}
+        {data && <Board tools={shown} />}
       </section>
 
       <section aria-labelledby="tools-h">

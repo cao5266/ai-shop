@@ -9,6 +9,7 @@ import { EmptyState, ErrorState, GoButton, Pager, Price, RowsSkeleton } from '@/
 import { SearchInput } from '@/components/SearchInput'
 import { useApi } from '@/lib/useApi'
 import { qs } from '@/lib/secureApi'
+import { hasOffer } from '@/lib/spec'
 import { shopTitle, specText } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Home, Shops as ShopsData } from '@/lib/types'
@@ -37,7 +38,7 @@ export default function Shops() {
         <SelectTrigger aria-label="商品" className={cls}><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>全部商品</SelectItem>
-          {home.data?.tools.map((t) => <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>)}
+          {home.data?.tools.filter(hasOffer).map((t) => <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>)}
         </SelectContent>
       </Select>
       {withType && <Select value={type || ALL} onValueChange={(v) => set('type', v)}>

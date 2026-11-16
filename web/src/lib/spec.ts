@@ -43,3 +43,6 @@ const META: Record<string, { vendor: string; category: string; tagline: string }
 }
 export const toolMeta = (name: string) => META[name] ?? null
 export const toolCategory = (t: Pick<Tool, 'name'>) => META[t.name]?.category ?? '其他'
+
+/** 至少有一家店铺报价；没有报价的商品不在首页、分类、搜索筛选里展示（有报价后自动出现） */
+export const hasOffer = (t: Pick<Tool, 'price' | 'starting_price'>) => (t.starting_price ?? t.price) != null
