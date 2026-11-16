@@ -15,7 +15,8 @@ if [ ! -s "$REPORT_DIR/$DAY.json" ]; then
   exit 1
 fi
 if [ "${AI_SHOPS_SKIP_PUSH:-0}" != 1 ]; then
-  if bash "$ROOT_DIR/deploy/push_update.sh" "$REPORT_DIR/$DAY.json"; then
+  "$PYTHON" -m crawler.export_import "$REPORT_DIR/$DAY.json" "$REPORT_DIR/$DAY-import.json"
+  if bash "$ROOT_DIR/deploy/push_update.sh" "$REPORT_DIR/$DAY-import.json"; then
     echo '线上导入：成功' >> "$REPORT_DIR/$DAY.md"
   else
     echo '线上导入：失败，请检查推送日志并重试导入当日 JSON。' >> "$REPORT_DIR/$DAY.md"
