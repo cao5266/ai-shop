@@ -9,17 +9,17 @@
 
 - 后端：Python 3.13、FastAPI、SQLAlchemy 2、psycopg 3
 - 数据库：PostgreSQL（生产）；未设置 `DATABASE_URL` 时回退到本地 SQLite（仅开发）
-- 前端：原生 HTML/CSS/JS，无构建步骤，由 FastAPI 直接托管。标题字体 Noto Serif SC（SIL OFL 1.1，已裁剪为 GB2312 一级字，自托管），正文用系统中文字体
+- 前端：原生 HTML/CSS/JS 单页（hash 路由），无构建步骤，由 FastAPI 直接托管。应用商店风格的商品卡片 + 详情页，系统字体（PingFang SC / Microsoft YaHei / -apple-system）；商品 logo 自托管在 static/logos/，来源与许可见 static/logos/README.md
 - 部署：Docker Compose（app + postgres）
 
 ## 目录
 
 ```
 backend/        models.py 表结构 · importer.py 导入逻辑 · cli.py 命令行 · main.py 接口与静态托管
-static/         前端页面
+static/         前端页面（index.html / styles.css / app.js）与 logos/
 data/seed/      首批数据 shops.json（224 家）
 incoming/       每天的新采集 JSON 放这里（不进 git）
-shoot.py        用 Playwright 截图
+shoot.py / shoot2.py  用 Playwright 截图（旧版 / v2 版）
 ```
 
 ## 服务器部署（Linux + Docker）
@@ -94,7 +94,7 @@ uvicorn backend.main:app --port 8000
 
 ## 接口
 
-`GET /api/meta`、`/api/shops?q=&product=&risk=&type=&sort=&page=`、`/api/shops/{id}`、`/api/products`、`/api/products/{名称}/offers`、`/api/runs`、`/healthz`。
+`GET /api/meta`、`/api/tools`（首页商品卡片，Grok 各档位合并）、`/api/tools/{名称}/offers`（商品详情页）、`/api/shops?q=&product=&risk=&type=&sort=&page=`、`/api/shops/{id}`、`/api/products`、`/api/products/{名称}/offers`、`/api/runs`、`/healthz`。
 
 ## 数据说明
 

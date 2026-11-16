@@ -3,91 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 订阅店铺速查：价格与风险一眼看清</title>
-<meta name="description" content="汇总 X 上推广的 AI 工具订阅代充/发卡店铺，按商品、价格、风险等级筛选。非官方渠道，本站不担保交易。">
-<meta name="robots" content="index,follow">
-<link rel="preload" href="/static/NotoSerifSC-700.woff2" as="font" type="font/woff2" crossorigin>
+<title>AI 订阅比价：各工具在售店铺与价格</title>
+<meta name="description" content="按 AI 工具浏览 X 上推广的订阅代充、发卡店铺与价格，并标注风险等级。非官方渠道，本站不担保交易。">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-<div class="warn" role="note">
-  <strong>非官方渠道</strong>
-  <span>这里列出的店铺都不是官方渠道，购买或代充可能违反 OpenAI、Anthropic 等官方服务协议，账号有被封的风险。</span>
-  <strong class="warn-last">本站不担保任何交易</strong>
+<div class="notice" role="note">
+  <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 9v5M10 6.2v.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  <p>这里的店铺都是<b>非官方渠道</b>，购买或代充可能违反官方服务协议，账号有被封的风险。<b>本站不担保任何交易</b>，请自行判断。</p>
 </div>
 
-<header class="mast">
-  <div class="mast-inner">
-    <p class="brand">AI 订阅店铺速查</p>
-    <h1 id="headline">正在读取数据…</h1>
-    <div class="riskbar" id="riskbar" aria-label="风险等级分布"></div>
-    <p class="stamp" id="stamp"></p>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="logo" href="#/" aria-label="返回首页"><span class="logo-mark">店</span>AI 订阅比价</a>
+    <label class="gsearch"><span class="sr">搜索店铺或商品</span>
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M13.6 13.6L17 17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <input id="q" type="search" placeholder="搜索店铺、域名或商品" autocomplete="off">
+    </label>
+    <nav class="nav" aria-label="主导航">
+      <a href="#/" data-nav="home">商品</a>
+      <a href="#/shops" data-nav="shops">全部店铺</a>
+      <a href="#/about" data-nav="about">说明</a>
+    </nav>
   </div>
 </header>
 
-<main>
-  <nav class="tabs" aria-label="浏览方式">
-    <button class="tab is-on" data-view="shops" type="button">全部店铺</button>
-    <button class="tab" data-view="products" type="button">按商品比价</button>
-    <button class="tab" data-view="about" type="button">风险说明与数据来源</button>
-  </nav>
-
-  <section id="v-shops">
-    <div class="tools">
-      <label class="search"><span class="sr">搜索</span>
-        <input id="q" type="search" placeholder="搜店名、域名、商品，例如 claude、gptplus" autocomplete="off">
-      </label>
-      <div class="selects">
-        <label>风险
-          <select id="f-risk"><option value="">全部</option><option>高</option><option>中</option></select>
-        </label>
-        <label>店铺类型
-          <select id="f-type"><option value="">全部</option></select>
-        </label>
-        <label>排序
-          <select id="f-sort">
-            <option value="mentions-desc">提及最多</option>
-            <option value="mentions-asc">提及最少</option>
-            <option value="price-asc">最低价从低到高</option>
-            <option value="price-desc">最低价从高到低</option>
-            <option value="recent">最近出现</option>
-          </select>
-        </label>
-      </div>
-    </div>
-    <div class="chips" id="chips" role="group" aria-label="按商品筛选"></div>
-    <p class="count" id="count" aria-live="polite"></p>
-    <ol class="ledger" id="list"></ol>
-    <div class="more"><button id="more" type="button" hidden>再显示 30 家</button></div>
-  </section>
-
-  <section id="v-products" hidden>
-    <h2 class="h2">各商品的帖文报价</h2>
-    <p class="note">下图的横轴是对数刻度（1 元、10 元、100 元、1000 元）。横线是帖文里出现过的最低到最高价，竖线是中位数。数字来自店铺在 X 上发的文案，档位不一（月卡、年付、不同额度都有），只能当作参考。</p>
-    <div id="prodlist" class="prodlist"></div>
-    <div id="offers" class="offers" hidden></div>
-  </section>
-
-  <section id="v-about" hidden class="about">
-    <h2 class="h2">风险等级怎么定的</h2>
-    <dl class="rules">
-      <dt><span class="tag r-high">高</span></dt>
-      <dd>帖子里卖成品号、共享号或来源不明的账号，写明不质保或不管封号，或者用多个账号群发同一店铺。</dd>
-      <dt><span class="tag r-mid">中</span></dt>
-      <dd>提供代充或直充，或者是其他非官方店铺，暂时没看到更高风险的文案。</dd>
-      <dt><span class="tag r-low">低</span></dt>
-      <dd>官方或正规渠道。本站收录的店铺里没有能认定为官方渠道的，所以这一档是 0 家。</dd>
-    </dl>
-    <p>「无法稳定打开」只是提示，不会单独把店铺升为高风险，因为发卡网常常拦截爬虫。</p>
-    <h2 class="h2">数据来源与局限</h2>
-    <ul id="limits" class="limits"></ul>
-    <p>数据由程序从 X 的公开帖子和店铺页面采集，只读，没有下单、注册或提交表单。价格只记录帖子或页面上实际看到的内容，没有的就留空。风险等级是按文案规则自动判断的，可能有误判，请自行核实。</p>
-  </section>
-</main>
+<main class="wrap" id="app" aria-live="polite"></main>
 
 <footer class="foot">
-  <p><strong>免责声明</strong> 本站只整理公开信息，不是任何店铺的代理或担保方，不参与交易，也不保证价格、库存、账号可用性和售后。第三方店铺属于非官方渠道，可能违反官方服务协议，账号可能被封，款项可能无法追回。请自行判断并承担全部风险。</p>
-  <p class="foot-sub">店铺链接都会在新标签页打开，并带有 nofollow。</p>
+  <div class="wrap">
+    <p><b>免责声明</b> 本站只整理 X 上的公开信息，不是任何店铺的代理或担保方，不参与交易，也不保证价格、库存、账号可用性和售后。第三方店铺属于非官方渠道，可能违反官方服务协议，账号可能被封，款项可能无法追回。请自行判断并承担全部风险。</p>
+    <p class="muted">商品 logo 来自开源图标库（lobe-icons，MIT；simple-icons，CC0），商标归各自所有者，本站与这些公司没有关联。店铺链接均在新标签页打开并带有 nofollow。</p>
+  </div>
 </footer>
 <script src="/static/app.js"></script>
 </body>

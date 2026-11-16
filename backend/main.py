@@ -205,6 +205,57 @@ def runs():
                 for r in s.scalars(select(CrawlRun).order_by(CrawlRun.id.desc()).limit(30))]
 
 
+
+def _groups(s):
+    """商品分组：同一 family（如 Grok 的各档位）合成一个「工具」，其余各自独立。"""
+    groups: dict[str, list[Product]] = {}
+    for p in s.scalars(select(Product).order_by(Product.sort_order, Product.name)):
+        groups.setdefault(p.family or p.name, []).append(p)
+    return groups
+
+
+@app.get("/api/tools")
+def tools():
+    """首页商品卡片：每个工具的在售店铺数（去重）与帖文报价区间。只读聚合，不改表。"""
+    with SessionLocal() as s:
+        out = []
+        for key, members in _groups(s).items():
+            ids = [m.id for m in members]
+            n = s.scalar(select(func.count(func.distinct(ShopProduct.shop_id))).where(ShopProduct.product_id.in_(ids)))
+            amts = [float(a) for (a,) in s.execute(select(Price.amount).where(Price.product_id.in_(ids), Price.source == "post"))]
+            if not n:
+                continue
+            out.append({"name": key, "members": [m.name for m in members], "n_shops": n, "n_prices": len(amts),
+                        "min": min(amts) if amts else None, "max": max(amts) if amts else None,
+                        "median": statistics.median(amts) if amts else None})
+        return out
+
+
+@app.get("/api/tools/{name}/offers")
+def tool_offers(name: str):
+    """某工具下所有店铺：每店带该工具的全部帖文报价（按价格升序），另附「提到但未标价」的店铺。"""
+    with SessionLocal() as s:
+        members = _groups(s).get(name)
+        if not members:
+            raise HTTPException(404, "商品不存在")
+        ids = [m.id for m in members]
+        quotes: dict[int, list] = {}
+        for sid, pname, label, amount in s.execute(
+                select(Price.shop_id, Product.name, Price.label, Price.amount).join(Product, Product.id == Price.product_id)
+                .where(Price.product_id.in_(ids), Price.source == "post").order_by(Price.amount)):
+            quotes.setdefault(sid, []).append({"product": pname, "label": label, "amount": num(amount)})
+        shop_rows = s.scalars(select(Shop).join(ShopProduct, ShopProduct.shop_id == Shop.id)
+                              .where(ShopProduct.product_id.in_(ids)).distinct()).all()
+        def mini(sh):
+            return {"id": sh.id, "name": sh.name, "domain": sh.domain, "type": sh.platform_type, "url": sh.primary_url,
+                    "risk": sh.risk_level, "n_posts": sh.n_posts, "last_seen_at": iso(sh.last_seen_at),
+                    "quotes": quotes.get(sh.id, [])}
+        shops_ = [mini(sh) for sh in shop_rows]
+        priced = sorted([x for x in shops_ if x["quotes"]], key=lambda x: x["quotes"][0]["amount"])
+        unpriced = sorted([x for x in shops_ if not x["quotes"]], key=lambda x: -x["n_posts"])
+        return {"name": name, "members": [m.name for m in members], "offers": priced, "no_price": unpriced}
+
+
 app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets") if (STATIC / "assets").exists() else None
 
 
