@@ -50,9 +50,10 @@ curl http://127.0.0.1:8000/healthz
 ```
 
 - 构建前端用的 npm 镜像默认是腾讯云 `https://mirrors.cloud.tencent.com/npm/`，Python 依赖默认走腾讯云 PyPI。海外服务器可在 `.env` 里设置 `NPM_REGISTRY=https://registry.npmjs.org/`，PyPI 用 `--build-arg PIP_INDEX_URL=...` 覆盖。
-- 构建在服务器上进行，首次构建需要拉取 node 和 python 镜像，耗时取决于网络；`deploy/redeploy.sh` 给 `docker compose up --build` 的时限是 240 秒，首次可能不够，建议先在服务器上手动 `docker compose build` 一次。
+- 发布请用 `deploy/redeploy.sh`：本机把提交推到 GitHub（SSH 经服务器中转，因为本机直连 GitHub 可能被拦），服务器在 `/opt/ai_shops-src` 执行 `git pull`，再在本机 rsync 到 `/opt/ai_shops` 并 `docker compose build && up -d`。不会覆盖 `.env`、`incoming/`、`backups/`、`logs/`、`bin/`。不要用跨境 rsync/scp 传整份代码。
+- 构建在服务器上进行，首次构建需要拉取 node 和 python 镜像，耗时取决于网络；`deploy/redeploy.sh` 给 `docker compose build` 的时限是 14 分钟。
 - app 默认只监听 `127.0.0.1:8000`，Postgres 不对外开放。对外访问见下面「HTTPS」。
-- **升级已有部署前**（线上当前是明文数据 + 旧版镜像）：先在服务器 `.env` 加上两个密钥，再发布，再执行一次加密迁移。顺序见「字段加密」。
+- **升级已有部署前**：先在服务器 `.env` 加上 `FIELD_ENCRYPTION_KEY` 和 `API_SIGNING_SECRET`（缺任何一项 compose 会直接报错），再发布，再执行一次加密迁移。顺序见「字段加密」。
 
 ## 每日数据更新（流程没有变化）
 

@@ -1,42 +1,88 @@
 #!/bin/bash
-# 有界、分块、可重试部署；默认发布 git HEAD，可显式指定已提交版本。
+# 经 GitHub 发布：本机把指定提交推到仓库（SSH 走服务器中转），
+# 服务器 git pull 后在本机同步到运行目录并重建容器。
+# 不在跨境链路上 rsync/scp 整份代码。不会覆盖 .env、incoming/、backups/、logs/、bin/。
 set -euo pipefail
 APP_DIR=${AI_SHOPS_APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
 KEY=${AI_SHOPS_SSH_KEY:-$HOME/.ssh/aishops.pem}
 HOST=${AI_SHOPS_SSH_HOST:-ubuntu@101.34.76.198}
 REMOTE=${AI_SHOPS_REMOTE_DIR:-/opt/ai_shops}
+SRC=${AI_SHOPS_SRC_DIR:-/opt/ai_shops-src}
+GITHUB_KEY=${AI_SHOPS_GITHUB_KEY:-$HOME/.ssh/aishop_github}
 REF=${AI_SHOPS_DEPLOY_REF:-HEAD}
-COMMIT=$(git -C "$APP_DIR" rev-parse "$REF^{commit}")
+BRANCH=${AI_SHOPS_REMOTE_BRANCH:-main}
+
+COMMIT=$(git -C "$APP_DIR" rev-parse "${REF}^{commit}")
 [[ "$REMOTE" =~ ^/[a-zA-Z0-9_/-]+$ ]] || exit 2
-SSH=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3)
-run_remote() { timeout --kill-after=5 "$1" ssh "${SSH[@]}" "$HOST" "$2"; }
-tmp=$(mktemp -d /tmp/opencode/aishops-release.XXXXXX)
-trap 'rm -rf "$tmp"' EXIT
+[[ "$SRC" =~ ^/[a-zA-Z0-9_/-]+$ ]] || exit 2
+
+SSH=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+  -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=8)
+run_remote() { timeout --kill-after=10 "$1" ssh "${SSH[@]}" "$HOST" "$2"; }
+
 echo "发布提交 $COMMIT"
-run_remote 25 'echo SSH连接正常; df -h /opt/ai_shops'
-timeout 20 git -C "$APP_DIR" archive --format=tar.gz -o "$tmp/release.tar.gz" "$COMMIT"
-hash=$(sha256sum "$tmp/release.tar.gz"); hash=${hash%% *}
-timeout 10 split -b 131072 -d -a 4 "$tmp/release.tar.gz" "$tmp/part-"
-stage="/tmp/aishops-release-$COMMIT"
-run_remote 25 "mkdir -p '$stage/parts'; echo 分块目录已就绪"
-parts=("$tmp"/part-*)
-i=0
-for part in "${parts[@]}"; do
-  i=$((i+1)); name=${part##*/}
-  digest=$(sha256sum "$part"); digest=${digest%% *}
-  ok=0
-  for attempt in 1 2 3; do
-    echo "上传分块 $i/${#parts[@]}，尝试 $attempt：$name"
-    if timeout --kill-after=5 35 scp -O -l 512 "${SSH[@]}" "$part" "$HOST:$stage/parts/$name" &&
-       run_remote 25 "echo '$digest  $stage/parts/$name' | sha256sum -c -"; then ok=1; break; fi
-    echo "分块失败，重新连接"
-  done
-  [ "$ok" = 1 ] || { echo '连续失败，停止发布'; exit 1; }
+run_remote 25 'echo SSH连接正常; df -h / | awk "NR==1||/\/$/"'
+
+if git -C "$APP_DIR" remote get-url github >/dev/null 2>&1; then
+  remote=github
+else
+  remote=origin
+fi
+
+echo "推送到 GitHub（经服务器中转） $remote $COMMIT:$BRANCH"
+export GIT_SSH_COMMAND="ssh -i $GITHUB_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ProxyCommand='ssh -i $KEY -o BatchMode=yes -o IdentitiesOnly=yes -W %h:%p $HOST'"
+timeout --kill-after=15 180 git -C "$APP_DIR" push "$remote" "$COMMIT:refs/heads/$BRANCH"
+
+echo "服务器拉取 $SRC"
+ok=0
+for attempt in 1 2 3; do
+  echo "git pull 尝试 $attempt"
+  if run_remote 600 "set -e
+    cd '$SRC'
+    GIT_SSH_COMMAND='ssh -i \$HOME/.ssh/aishop_github -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20' \
+      git pull --ff-only origin '$BRANCH'
+    git rev-parse HEAD
+    test \"\$(git rev-parse HEAD)\" = '$COMMIT'
+  "; then
+    ok=1
+    break
+  fi
+  echo "拉取失败，准备重试"
+  sleep 8
 done
-echo '合并、校验并同步已提交源码'
-run_remote 60 "set -e; cat '$stage'/parts/part-* > '$stage/release.tar.gz'; echo '$hash  $stage/release.tar.gz' | sha256sum -c -; mkdir -p '$stage/source'; tar -xzf '$stage/release.tar.gz' -C '$stage/source'; rsync -a --delete --exclude '.env' --exclude 'incoming/' --exclude 'backups/' --exclude 'logs/' --exclude 'bin/' --exclude 'shots/' '$stage/source/' '$REMOTE/'; echo 源码同步完成"
-echo '重建并启动容器（最长240秒）'
-run_remote 250 "set -e; cd '$REMOTE'; timeout 240 docker compose up -d --build; docker compose ps; echo '$COMMIT' > logs/deployed_commit"
-echo '检查健康状态与数据库记录'
-run_remote 30 "set -e; curl -fsS --max-time 10 http://127.0.0.1:8000/healthz; cd '$REMOTE'; docker compose exec -T db psql -U aishops -d aishops -Atc 'select id,status,shops_in_batch from crawl_runs order by id; select count(*) from shops; select count(*) from listings;'; cat logs/deployed_commit"
+[ "$ok" = 1 ] || { echo "服务器 git pull 失败或提交不是 $COMMIT"; exit 1; }
+
+echo "本机同步源码到 $REMOTE（排除 .env incoming backups logs bin .git）"
+run_remote 60 "set -e
+  test -f '$REMOTE/.env'
+  grep -q '^FIELD_ENCRYPTION_KEY=.\+' '$REMOTE/.env'
+  grep -q '^API_SIGNING_SECRET=.\+' '$REMOTE/.env'
+  rsync -a --delete \
+    --exclude '.env' --exclude 'incoming/' --exclude 'backups/' --exclude 'logs/' --exclude 'bin/' --exclude '.git' \
+    '$SRC/' '$REMOTE/'
+  echo 源码同步完成
+"
+
+echo "重建并启动容器（首次构建可能较久，限时 14 分钟）"
+run_remote 900 "set -e
+  cd '$REMOTE'
+  timeout --kill-after=20 840 docker compose build
+  timeout --kill-after=15 120 docker compose up -d
+  docker compose ps
+  mkdir -p logs
+  echo '$COMMIT' > logs/deployed_commit
+"
+
+echo "检查健康状态与数据量"
+run_remote 50 "set -e
+  ok=0
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    if curl -fsS --max-time 5 http://127.0.0.1:8000/healthz; then echo; ok=1; break; fi
+    sleep 3
+  done
+  [ \"\$ok\" = 1 ]
+  cd '$REMOTE'
+  docker compose exec -T db psql -U aishops -d aishops -Atc 'select count(*) from shops; select count(*) from listings;'
+  cat logs/deployed_commit
+"
 echo "发布成功：$COMMIT"
