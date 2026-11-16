@@ -2,9 +2,10 @@ import type { Spec, Tool } from './types'
 
 const cap = (s: string) => s.replace(/^[a-z]/, (c) => c.toUpperCase())
 
-/** 周期分组名：1月→月卡，1年→年卡，3月→季卡，其余原样；缺失 → 时长未注明 */
+const UNK = '时长未注明' // 仅用于识别接口里的占位值，绝不显示
+/** 周期分组名：1月→月卡，1年→年卡，3月→季卡，其余原样；缺失 → 其他规格 */
 export function durationGroup(d?: string | null): string {
-  if (!d) return '时长未注明'
+  if (!d || d === UNK) return '其他规格'
   if (d === '1月') return '月卡'
   if (d === '1年') return '年卡'
   if (d === '3月') return '季卡'
@@ -14,12 +15,13 @@ export function durationGroup(d?: string | null): string {
 /** 规格名（不含周期）：取 label 去掉开头的周期，再逐段首字母大写；缺失时用 tier + delivery 兜底 */
 export function specName(s: Pick<Spec, 'label' | 'tier' | 'delivery'>): string {
   const parts = (s.label ?? '').split(' / ').map((x) => x.trim()).filter(Boolean)
-  if (parts[0] === '时长未注明' || /^\d+(天|月|年)$/.test(parts[0] ?? '')) parts.shift()
+  if (parts[0] === UNK || /^\d+(天|月|年)$/.test(parts[0] ?? '')) parts.shift()
   const name = parts.map(cap).join(' ')
   return name || [s.tier ? cap(s.tier) : '', s.delivery && s.delivery !== '未注明交付' ? s.delivery : ''].filter(Boolean).join(' ') || '未命名规格'
 }
 
-export const periodText = (s: { period?: string | null }) => s.period ?? '时长未注明'
+/** 时长文本，未知返回空串 */
+export const periodText = (s: { period?: string | null }) => (s.period && s.period !== UNK ? s.period : '')
 export const lowestShopName = (s: Spec) => s.lowest_shop?.name || null
 
 // ---- 前端自带的展示元数据：接口目前不返回厂商、分类、简介 ----

@@ -21,7 +21,7 @@ function ListingRows({ items }: { items: Listing[] }) {
               <p className="font-medium break-words">{l.title}</p>
               <p className="mt-1 flex flex-wrap gap-1">
                 {l.product && <Badge variant="outline">{l.product}</Badge>}
-                {l.spec && <Badge variant="secondary">{specText(l.spec)}</Badge>}
+                {specText(l.spec) && <Badge variant="secondary">{specText(l.spec)}</Badge>}
               </p>
               <p className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
                 <span>更新于 {when(l.observed_at)}</span>{stockText(l.stock) && <span>{stockText(l.stock)}</span>}

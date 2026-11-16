@@ -116,7 +116,7 @@ export default function ToolPage() {
                         <span className="absolute size-px overflow-hidden opacity-0"><RadioGroupItem value={s.key} /></span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium" title={specName(s)}>{specName(s)}</span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">{periodText(s)}，{s.shop_count} 家在售</span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">{[periodText(s), `${s.shop_count} 家在售`].filter(Boolean).join('，')}</span>
                         </span>
                         <Price value={s.lowest_price} currency={s.currency} suffix="" className="[&>span]:text-2xl" />
                       </label>
@@ -134,7 +134,7 @@ export default function ToolPage() {
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 id="shops-h" className="text-lg font-semibold">{cur ? specName(cur) : '在售店铺'}</h2>
-                {cur && <p className="mt-0.5 text-sm text-muted-foreground">{periodText(cur)}，{cur.shop_count} 家在售，最低 {money(cur.lowest_price, cur.currency)}{lowestShopName(cur) ? `（${lowestShopName(cur)}）` : ''}</p>}
+                {cur && <p className="mt-0.5 text-sm text-muted-foreground">{[periodText(cur), `${cur.shop_count} 家在售`].filter(Boolean).join('，')}，最低 {money(cur.lowest_price, cur.currency)}{lowestShopName(cur) ? `（${lowestShopName(cur)}）` : ''}</p>}
               </div>
               <Select value={sort} onValueChange={(v) => update('sort', v === 'price-asc' ? '' : v)}>
                 <SelectTrigger aria-label="排序" className="h-10 w-40 bg-card"><SelectValue /></SelectTrigger>

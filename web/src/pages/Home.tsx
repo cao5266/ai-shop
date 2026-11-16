@@ -77,7 +77,7 @@ function Board({ tools }: { tools: Tool[] }) {
                 <Tile name={t.name} size="xs" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{t.name} <span className="font-normal text-muted-foreground">{specName(e).split(' ').filter((w) => !t.name.toLowerCase().split(' ').includes(w.toLowerCase())).join(' ')}</span></p>
-                  <p className="truncate text-xs text-muted-foreground">{periodText(e)}，共 {t.entry_shop_count ?? 0} 家在售</p>
+                  <p className="truncate text-xs text-muted-foreground">{[periodText(e), `共 ${t.entry_shop_count ?? 0} 家在售`].filter(Boolean).join('，')}</p>
                 </div>
                 <span className="fig text-2xl font-semibold text-price"><span className="mr-0.5 text-[0.62em] font-medium">¥</span>{new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(t.entry_price!)}</span>
               </Link>

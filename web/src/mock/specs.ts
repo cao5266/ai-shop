@@ -18,7 +18,7 @@ const toInfo = (_name: string, s: MockSpec): Spec => {
   const period = s.duration ? DUR[s.duration] ?? s.duration : null
   const tier = s.tier ? s.tier.toLowerCase() : null
   return {
-    key: s.key, label: [period ?? '时长未注明', tier, delivery].filter(Boolean).join(' / '), currency: s.currency,
+    key: s.key, label: [period, tier, delivery].filter(Boolean).join(' / '), currency: s.currency,
     tier, period, delivery, lowest_price: s.min, lowest_shop: s.lowest_shop ? { name: s.lowest_shop, shop_key: 'mock.example' } : null,
     shop_count: s.n_shops, listing_count: s.n_offers,
   }
