@@ -53,6 +53,21 @@ class GenericAdapter:
     async def crawl(self, ctx, shop, rule):
         url = shop["primary_url"]
         response = await ctx.get(url)
+        html_lower = response.text.lower()
+        if "shopify" in html_lower or "cdn.shopify.com" in html_lower:
+            platform = "Shopify"
+        elif "woocommerce" in html_lower or "wp-content/plugins/woocommerce" in html_lower:
+            platform = "WooCommerce"
+        elif "萌奶" in response.text or "mengnai" in html_lower:
+            platform = "萌奶"
+        elif "/shopapi/" in html_lower:
+            platform = "ShopApi 类发卡网"
+        elif re.search(r"独角数卡|dujiaoka", html_lower):
+            platform = "独角数卡"
+        elif re.search(r"异次元|yilep|yipay", html_lower):
+            platform = "异次元"
+        else:
+            platform = "通用独立站"
         # 发现独立站共享系统后直接走公开查询，后续可写入域名映射。
         if re.search(r"/api/v1/public|Dujiao|dujiao-next", response.text, re.I):
             from .public_api import NextAdapter
@@ -78,8 +93,10 @@ class GenericAdapter:
             if product_url == str(response.url): continue
             detail = await ctx.get(product_url)
             rows.extend(parse_html(detail.text, str(detail.url), rule))
-        if rows: return rows, {"status": "success", "reason": "", "method": "html", "complete": False}
-        return await ctx.render(url, rule, f"HTTP {response.status_code}，静态页无商品价格")
+        if rows: return rows, {"status": "success", "reason": "", "method": "html", "complete": False, "platform": platform}
+        rows, status = await ctx.render(url, rule, f"HTTP {response.status_code}，静态页无商品价格")
+        status["platform"] = platform
+        return rows, status
 
 
 class DujiaoAdapter(GenericAdapter):

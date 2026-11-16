@@ -322,9 +322,13 @@ def _import_listings(session, run, shop, data, now, get_product):
         observed = dt.datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00"))
         row = existing.get(item["listing_key"])
         changed = row is None or Decimal(str(row.price)) != price or row.currency != item.get("currency", "CNY")
+        stored_spec = dict(item["spec"])
+        for field in ("verification_source", "price_anomaly", "price_anomaly_reason"):
+            if field in item:
+                stored_spec[field] = item[field]
         vals = dict(product_id=pid, title=item["title"], price=price, currency=item.get("currency", "CNY"),
                     url=item["url"], category=item.get("category"), image=item.get("image") if isinstance(item.get("image"), str) else None,
-                    spec=item["spec"], spec_key=item["spec"]["key"], stock=str(item["stock"]) if item.get("stock") is not None else None,
+                    spec=stored_spec, spec_key=item["spec"]["key"], stock=str(item["stock"]) if item.get("stock") is not None else None,
                     sales=str(item["sales"]) if item.get("sales") is not None else None, risk=item.get("risk", "未判定"),
                     source_url=item.get("source_url") or item["url"], active=item.get("stock_status") != "out" and item.get("stock") != 0,
                     observed_at=observed, last_run_id=run.id)

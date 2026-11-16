@@ -8,19 +8,20 @@ from .normalize import classify, specification, listing, representative_rank, co
 
 
 class PipelineTests(unittest.TestCase):
-    def test_entry_paid_offers_only(self):
+    def test_all_product_specs_are_kept_and_only_mis_matches_excluded(self):
         cases = [
             ('Cursor Pro 月卡 代充', 'Cursor', '120', False),
-            ('Cursor ultra月卡成品号', 'Cursor', '1165.5', True),
-            ('Muse 10亿token成品号 质保24小时', 'Muse', '1.9', True),
-            ('Muse 10亿token成品号 质保24小时', 'Muse', '8.7', True),
-            ('Perplexity Max 月卡 充值', 'Perplexity', '119', True),
-            ('Perplexity Pro 年卡', 'Perplexity', '229', True),
+            ('Cursor ultra月卡成品号', 'Cursor', '1165.5', False),
+            ('Muse 10亿token成品号 质保24小时', 'Muse', '1.9', False),
+            ('Muse 10亿token成品号 质保24小时', 'Muse', '8.7', False),
+            ('Perplexity Max 月卡 充值', 'Perplexity', '119', False),
+            ('Perplexity Pro 年卡', 'Perplexity', '229', False),
             ('Telegram Premium 三个月会员充值', 'Telegram会员', '95.7', False),
-            ('Telegram Premium 一整年会员充值', 'Telegram会员', '242', True),
+            ('Telegram Premium 一整年会员充值', 'Telegram会员', '242', False),
             ('Claude Max 5x 月订阅 充值', 'Claude Max', '770', False),
-            ('Claude Max 20x 月卡 充值', 'Claude Max', '2052', True),
-            ('ChatGPT Plus 体验月卡 成品号', 'ChatGPT Plus', '1', True),
+            ('Claude Max 20x 月卡 充值', 'Claude Max', '2052', False),
+            ('ChatGPT Plus 体验月卡 成品号', 'ChatGPT Plus', '1', False),
+            ('Copilot 使用教程与支持工具列表', 'Copilot', '0', True),
         ]
         for title, product, price, excluded in cases:
             with self.subTest(title=title, price=price):
@@ -44,7 +45,9 @@ class PipelineTests(unittest.TestCase):
         engine = create_engine('sqlite://')
         Base.metadata.create_all(engine)
         row = listing('Cursor 月卡 成品号', '12.50', 'https://example.org/goods/1')
-        row.update(listing_key='test', observed_at='2026-11-16T00:00:00+00:00')
+        row.update(listing_key='test', observed_at='2026-11-16T00:00:00+00:00',
+                   verification_source='浏览器核实 11-17', price_anomaly=True,
+                   price_anomaly_reason='低于同规格中位数')
         data = {'shops': [{'shop_key': 'example.org', 'primary_url': 'https://example.org',
                            'crawl': {'status': 'success', 'complete': True}, 'listings': [row]}]}
         with Session(engine) as s:
@@ -52,6 +55,9 @@ class PipelineTests(unittest.TestCase):
             import_data(s, data)
             self.assertEqual(s.scalar(select(func.count(Listing.id))), 1)
             self.assertEqual(s.scalar(select(func.count(ListingPriceHistory.id))), 1)
+            stored = s.scalar(select(Listing))
+            self.assertEqual(stored.spec['verification_source'], '浏览器核实 11-17')
+            self.assertTrue(stored.spec['price_anomaly'])
             row['price'] = '15'
             import_data(s, data)
             self.assertEqual(s.scalar(select(func.count(ListingPriceHistory.id))), 2)
