@@ -1,3 +1,14 @@
+# ---- 阶段 1：构建 React 前端（npm 默认走腾讯云镜像，海外构建可覆盖）
+#   docker compose build --build-arg NPM_REGISTRY=https://registry.npmjs.org/
+FROM node:22-alpine AS web
+WORKDIR /web
+ARG NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/
+COPY web/package.json web/package-lock.json web/.npmrc ./
+RUN npm ci --no-audit --no-fund --registry "${NPM_REGISTRY}"
+COPY web/ ./
+RUN npm run build
+
+# ---- 阶段 2：Python 运行时
 FROM python:3.13-slim
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /srv/app
@@ -9,8 +20,8 @@ ARG PIP_TRUSTED_HOST=mirrors.cloud.tencent.com
 RUN pip install -i "${PIP_INDEX_URL}" --trusted-host "${PIP_TRUSTED_HOST}" -r requirements.txt
 COPY backend ./backend
 COPY crawler ./crawler
-COPY static ./static
 COPY data/seed ./data/seed
+COPY --from=web /web/dist ./web/dist
 RUN useradd -r -u 10001 app && chown -R app /srv/app
 USER app
 EXPOSE 8000

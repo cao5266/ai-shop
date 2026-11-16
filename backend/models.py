@@ -5,6 +5,7 @@ from sqlalchemy import (BigInteger, Boolean, DateTime, ForeignKey, Index, Intege
                         String, Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from .fieldcrypt import DetText, EncJSON, EncText
 
 JSONType = JSON().with_variant(JSONB(), "postgresql")
 PK = BigInteger().with_variant(Integer(), "sqlite")  # SQLite 仅 INTEGER 主键可自增
@@ -41,13 +42,13 @@ class CrawlRun(Base):
 class Shop(Base):
     __tablename__ = "shops"
     id: Mapped[int] = mapped_column(PK, primary_key=True, autoincrement=True)
-    shop_key: Mapped[str] = mapped_column(String(400), unique=True)
+    shop_key: Mapped[str] = mapped_column(DetText, unique=True)
     name: Mapped[str] = mapped_column(String(400))
-    domain: Mapped[str] = mapped_column(String(255), index=True)
+    domain: Mapped[str] = mapped_column(DetText, index=True)
     platform_type: Mapped[str] = mapped_column(String(50), index=True)
-    primary_url: Mapped[str] = mapped_column(Text)
-    final_url: Mapped[str | None] = mapped_column(Text)
-    all_urls: Mapped[list | None] = mapped_column(JSONType)
+    primary_url: Mapped[str] = mapped_column(EncText)
+    final_url: Mapped[str | None] = mapped_column(EncText)
+    all_urls: Mapped[list | None] = mapped_column(EncJSON)
     http_code: Mapped[str | None] = mapped_column(String(10))
     page_status: Mapped[str | None] = mapped_column(Text)
     page_readable: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -55,8 +56,8 @@ class Shop(Base):
     entity_titles: Mapped[str | None] = mapped_column(Text)
     n_posts: Mapped[int] = mapped_column(Integer, default=0, index=True)
     n_accounts: Mapped[int] = mapped_column(Integer, default=0)
-    example_post_url: Mapped[str | None] = mapped_column(Text)
-    notes: Mapped[str | None] = mapped_column(Text)
+    example_post_url: Mapped[str | None] = mapped_column(EncText)
+    notes: Mapped[str | None] = mapped_column(EncText)
     risk_level: Mapped[str] = mapped_column(String(4), default="中", index=True)  # 高/中/低
     min_price: Mapped[float | None] = mapped_column(Numeric(12, 2), index=True)   # 冗余字段，导入时算好
     first_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
@@ -117,9 +118,9 @@ class XPost(Base):
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"), index=True)
     uid: Mapped[str] = mapped_column(String(100))           # post_id 或 txt:<hash>
     post_id: Mapped[str | None] = mapped_column(String(32))
-    url: Mapped[str | None] = mapped_column(Text)
-    author: Mapped[str | None] = mapped_column(String(100))
-    text: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(EncText)
+    author: Mapped[str | None] = mapped_column(EncText)
+    text: Mapped[str | None] = mapped_column(EncText)
     kind: Mapped[str] = mapped_column(String(8), default="ref")
     first_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
@@ -129,7 +130,7 @@ class XPost(Base):
 class PromoterAccount(Base):
     __tablename__ = "promoter_accounts"
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"), primary_key=True)
-    username: Mapped[str] = mapped_column(String(100), primary_key=True)
+    username: Mapped[str] = mapped_column(DetText, primary_key=True)
     post_count: Mapped[int | None] = mapped_column(Integer)
     created_year: Mapped[int | None] = mapped_column(Integer)
     followers: Mapped[int | None] = mapped_column(Integer)
@@ -174,15 +175,15 @@ class Listing(Base):
     title: Mapped[str] = mapped_column(Text)
     price: Mapped[float] = mapped_column(Numeric(14, 4))
     currency: Mapped[str] = mapped_column(String(8), default="CNY")
-    url: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(EncText)
     category: Mapped[str | None] = mapped_column(Text)
-    image: Mapped[str | None] = mapped_column(Text)
+    image: Mapped[str | None] = mapped_column(EncText)
     spec: Mapped[dict] = mapped_column(JSONType)
     spec_key: Mapped[str] = mapped_column(String(32), index=True)
     stock: Mapped[str | None] = mapped_column(String(100))
     sales: Mapped[str | None] = mapped_column(String(100))
     risk: Mapped[str] = mapped_column(String(8))
-    source_url: Mapped[str] = mapped_column(Text)
+    source_url: Mapped[str] = mapped_column(EncText)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     observed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
     last_run_id: Mapped[int] = mapped_column(ForeignKey("crawl_runs.id"))

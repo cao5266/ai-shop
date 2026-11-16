@@ -7,7 +7,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-aishops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # 默认用 Docker 命名卷。要加密数据卷：把 PGDATA_PATH 指向 LUKS 挂载点（见 README「数据库加密」）
+      - ${PGDATA_PATH:-pgdata}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -16,13 +17,20 @@ services:
     # 不对外暴露 5432，只有 app 容器能通过内网访问
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://mirrors.cloud.tencent.com/npm/}
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-aishops}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-aishops}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?请在 .env 中设置 FIELD_ENCRYPTION_KEY，用 python -m backend.cli gen-key 生成}
+      API_SIGNING_SECRET: ${API_SIGNING_SECRET:?请在 .env 中设置 API_SIGNING_SECRET，用 openssl rand -hex 32 生成}
+      # 端口只绑定在 127.0.0.1（或你显式改的地址），前面是自己的 nginx，所以信任它传来的真实客户端 IP（限流、会话绑定要用）
+      FORWARDED_ALLOW_IPS: "*"
     volumes:
       - ./incoming:/srv/app/incoming:ro   # 每天的采集 JSON 放这里，再用 docker compose exec 导入
     ports:

@@ -1,4 +1,4 @@
-"""命令行：python -m backend.cli init-db | import FILE [--force] | runs"""
+"""命令行：python -m backend.cli init-db | import FILE [--force] | runs | gen-key | encrypt-existing [--dry-run] | verify-encryption"""
 import argparse
 import sys
 
@@ -17,8 +17,27 @@ def main():
     p.add_argument("file")
     p.add_argument("--force", action="store_true", help="文件内容与已导入过的相同时仍强制导入")
     sub.add_parser("runs", help="列出最近的 crawl_runs")
+    sub.add_parser("gen-key", help="生成一个 FIELD_ENCRYPTION_KEY")
+    p = sub.add_parser("encrypt-existing", help="把库里现有的明文敏感字段加密（幂等）")
+    p.add_argument("--dry-run", action="store_true", help="只统计，不修改")
+    sub.add_parser("verify-encryption", help="检查敏感列是否还有明文（应全为 0）")
     a = ap.parse_args()
+    if a.cmd == "gen-key":
+        from .fieldcrypt import generate_key
+        print(generate_key())
+        return
     init_db()
+    if a.cmd == "encrypt-existing":
+        from .encrypt_existing import run
+        for k, (total, todo) in run(a.dry_run).items():
+            print(f"{k}: 共 {total} 行，{'需加密' if a.dry_run else '已加密'} {todo} 行")
+        return
+    if a.cmd == "verify-encryption":
+        from .encrypt_existing import verify
+        res = verify()
+        for k, n in res.items():
+            print(f"{k}: 明文 {n} 行")
+        sys.exit(1 if any(res.values()) else 0)
     if a.cmd == "init-db":
         print("OK 表已就绪：", DATABASE_URL.split("@")[-1])
     elif a.cmd == "import":
