@@ -19,7 +19,7 @@ from .models import (CrawlRun, Price, PriceHistory, Product, PromoterAccount, Ri
 
 PRODUCT_ORDER = ["ChatGPT Plus", "ChatGPT Pro", "Claude Pro", "Claude Max", "Grok Plus", "Grok Premium",
                  "Grok Super", "Grok Ultra", "Cursor", "Muse", "Gemini", "Perplexity", "Copilot",
-                  "X会员", "Telegram会员", "Codex", "Midjourney", "Grok"]
+                  "X会员", "Telegram会员", "ChatGPT Go", "Codex", "Midjourney", "Grok"]
 
 # 风险标记归类：(正则, code, 短标签, 严重度)。严重度「高」的任意一条 → 店铺风险等级为高。
 FLAG_RULES = [
@@ -323,7 +323,11 @@ def _import_listings(session, run, shop, data, now, get_product):
         row = existing.get(item["listing_key"])
         changed = row is None or Decimal(str(row.price)) != price or row.currency != item.get("currency", "CNY")
         stored_spec = dict(item["spec"])
-        for field in ("verification_source", "price_anomaly", "price_anomaly_reason"):
+        for field in ("verification_source", "price_anomaly", "price_anomaly_reason",
+                      "quality_action", "quality_flags", "quality_review_required",
+                      "quality_review_reason", "comparison_exclusion", "mirror_of",
+                      "period_default", "period_na", "codex_source_tier",
+                      "codex_mapped_product", "codex_duplicate_of", "catalog_title"):
             if field in item:
                 stored_spec[field] = item[field]
         vals = dict(product_id=pid, title=item["title"], price=price, currency=item.get("currency", "CNY"),

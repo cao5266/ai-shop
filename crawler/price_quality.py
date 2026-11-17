@@ -8,10 +8,10 @@ import statistics
 
 def _configured_ratio() -> float:
     try:
-        value = float(os.environ.get("AI_SHOPS_LOW_PRICE_MEDIAN_RATIO", "0.45"))
+        value = float(os.environ.get("AI_SHOPS_LOW_PRICE_MEDIAN_RATIO", "0.50"))
     except (TypeError, ValueError):
-        value = 0.45
-    return value if 0.05 <= value < 1 else 0.45
+        value = 0.50
+    return value if 0.05 <= value < 1 else 0.50
 
 
 LOW_PRICE_MEDIAN_RATIO = _configured_ratio()
@@ -24,10 +24,10 @@ def _configured_cny_floor() -> float:
 
 
 MIN_CNY_PRICE = _configured_cny_floor()
-MIN_MEDIAN_SAMPLES = 3
+MIN_MEDIAN_SAMPLES = 5
 NON_COMPARABLE_PATTERNS = (
-    (re.compile(r"教程|教学|使用指南|仅认证|学生认证|共享车位|拼车|合租|代付|代拍|补差价|升级差价|仅手续费|测试价|批发专用|\d+个起发|upi渠道"),
-     "标题表明是教程、认证、共享或非完整商品，需人工质检"),
+    (re.compile(r"教程|教学|使用指南|仅认证|学生认证|代付|代拍|补差价|升级差价|仅手续费|测试价|批发专用|\d+个起发"),
+     "标题表明是教程、认证或非完整商品，需人工质检"),
 )
 
 

@@ -13,8 +13,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, or_, select
 
 from crawler.normalize import representative_rank
-from crawler.normalize import comparison_exclusion
+from crawler.normalize import comparison_exclusion, specification
 from crawler.price_quality import assess_price_group
+from crawler.data_quality import assess_listing, entry_profile_match
 from .db import SessionLocal
 from .models import (CrawlRun, Listing, ListingPriceHistory, Product, Shop, ShopCrawlResult, ShopProduct)
 from .secure import Ctx, go_token, guard, new_session, secure_ctx
@@ -27,7 +28,7 @@ PAGE_MAX = 30
 MAX_PAGE = 40
 STANDARD_PRODUCTS = ["ChatGPT Plus", "ChatGPT Pro", "Claude Pro", "Claude Max", "Grok Plus", "Grok Premium",
                      "Grok Super", "Grok Ultra", "Cursor", "Muse", "Gemini", "Perplexity", "Copilot",
-                     "X会员", "Telegram会员", "Codex", "Midjourney", "Grok"]
+                     "X会员", "Telegram会员", "ChatGPT Go", "Midjourney", "Grok"]
 
 
 def iso(d):
@@ -43,42 +44,11 @@ def num(x):
 
 
 def _canonical_period(spec: dict, title: str) -> str:
-    raw = str(spec.get("duration") or "").strip().lower()
-    label = str(spec.get("label") or "").strip().lower()
-    text = re.sub(r"(?:pro|max)\s*\d+", "", " ".join((raw, label, title.lower())))
-    compact = re.sub(r"\s+", "", text)
-    if re.search(r"永久|终身|终生|lifetime|permanent", compact): return "永久"
-    if re.search(r"半年|半年度", compact): return "6月"
-    if re.search(r"季度|季卡|季付|3months?|3个月|3月|90天", compact): return "3月"
-    if re.search(r"月卡|月付|月费|月订阅|一个月|一月|monthly|1month", compact): return "1月"
-    if re.search(r"年卡|年付|年费|一年|一整年|annual|1year|12月", compact): return "1年"
-    # Read numeric periods from duration, label, and title. Warranty-only days do
-    # not describe the subscription term; warranty text that explicitly says
-    # "订阅" does.
-    period_re = re.compile(r"(?<![a-z0-9])(\d+)\s*(个月|月|months?|年|years?|天|日|days?|周|weeks?|小时|时|hours?)", re.I)
-    for match in period_re.finditer(text):
-        amount = int(match.group(1))
-        unit = match.group(2).lower()
-        context = text[max(0, match.start() - 10):min(len(text), match.end() + 5)]
-        if any(word in context for word in ("质保", "保修", "售后", "首登")) and "订阅" not in context:
-            continue
-        if unit in {"年", "year", "years"}: return "1年" if amount == 1 else f"{amount}年"
-        if unit in {"月", "个月", "month", "months"}:
-            if amount == 12: return "1年"
-            return "1月" if amount == 1 else f"{amount}月"
-        if unit in {"周", "week", "weeks"}:
-            if amount == 4: return "1月"
-            return f"{amount * 7}天"
-        if unit in {"天", "日", "day", "days"}:
-            if amount in (28, 29, 30, 31): return "1月"
-            if amount == 90: return "3月"
-            if amount == 365: return "1年"
-            return f"{amount}天"
-        return f"{amount}小时"
-    count = re.search(r"(\d+)\s*(?:次卡|次(?:充值|兑换|使用|订阅))", compact)
-    if count: return f"{int(count.group(1))}次"
-    if re.search(r"一次|单次|一次性|one[- ]?time", compact): return "1次"
-    return "未注明周期"
+    parsed = specification(title, spec.get("product"))
+    raw = str(spec.get("duration") or "").strip()
+    if raw and not re.search(r"24\s*小时|48\s*小时|100\s*月|200\s*月|500\s*月", raw):
+        parsed = specification(f"{title} {raw}", spec.get("product"))
+    return parsed.get("duration") or "时长未注明"
 
 
 def _canonical_tier(spec: dict) -> tuple[str, ...]:
@@ -88,6 +58,8 @@ def _canonical_tier(spec: dict) -> tuple[str, ...]:
     for value in values:
         item = re.sub(r"\s+", "", str(value).lower()).replace("＋", "+")
         item = re.sub(r"^(pro|max)(100|200|500|5x|20x)$", r"\1\2", item)
+        item = {"pro5x": "pro100", "pro10x": "pro100", "pro20x": "pro200",
+                "pro25x": "pro200", "pro50x": "pro500", "max5倍": "max5x", "max20倍": "max20x"}.get(item, item)
         if item in {"p+", "plus+", "+"}: item = "plus"
         if item: normalized.add(item)
     return tuple(sorted(normalized))
@@ -99,9 +71,13 @@ def _canonical_delivery(spec: dict, title: str) -> str:
     if raw in {"成品号", "成品账号", "账号", "帐号", "共享号", "account"}: return "成品号"
     if raw in {"兑换码", "卡密", "cdk", "cdkey", "激活码"}: return "兑换码"
     if raw in {"组合", "套餐", "组合套餐", "bundle"}: return "组合"
+    if raw in {"共享车位", "共享/车位", "车位", "家庭组", "拼车", "共享"}: return "共享/车位"
+    if raw in {"额度包", "codex额度包"}: return "额度包"
+    if raw in {"非账号/资格", "非账号", "资格"}: return "非账号/资格"
     if raw in {"token号", "token账号"}: return "Token号"
     if raw and raw != "未注明交付": return raw
     t = title.lower()
+    if re.search(r"拼车|车位|共享|合租|家庭组|子账号|席位|成员位|上车|team", t): return "共享/车位"
     if re.search(r"三合一|多合一|组合|联合会员|套餐包|\+.*(?:会员|pro|plus)", t): return "组合"
     if re.search(r"兑换码|卡密|cdk|cdkey|激活码", t): return "兑换码"
     if re.search(r"成品号|成品账号|账号密码|共享号", t): return "成品号"
@@ -115,16 +91,17 @@ def _normalized_spec(row):
     tier = _canonical_tier(spec)
     period = _canonical_period(spec, title)
     delivery = _canonical_delivery(spec, title)
-    quota = tuple(sorted({re.sub(r"\s+", "", str(v).lower()) for v in (spec.get("quota") or []) if v}))
+    quota = tuple(sorted({re.sub(r"\s+", "", str(v).lower()).replace("tokens", "token") for v in (spec.get("quota") or []) if v}))
     region = tuple(sorted({re.sub(r"\s+", "", str(v).lower()) for v in (spec.get("region") or []) if v}))
-    uncertain = period == "未注明周期" or not tier or delivery == "未注明交付"
-    identity = (tier, period, delivery, quota, region)
+    promotion = tuple(sorted(spec.get("promotion") or []))
+    uncertain = period == "时长未注明" or not tier or delivery == "未注明交付"
+    identity = (tier, period, delivery, quota, region, promotion)
     digest = hashlib.sha256(json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()[:32]
-    label_parts = [period, *quota, *tier, *region, delivery]
+    label_parts = [period, *quota, *tier, *region, *promotion, delivery]
     label = " / ".join(dict.fromkeys(label_parts))
     return {"key": digest, "tier": tier, "period": period, "delivery": delivery,
             "quota": quota, "region": region, "label": label,
-            "identity": identity, "incomplete": uncertain}
+            "identity": identity, "incomplete": uncertain, "promotion": promotion}
 
 
 def spec_group_id(row):
@@ -132,12 +109,20 @@ def spec_group_id(row):
     return (str(row.product_id), normalized["key"], row.currency)
 
 
-def _store_display_name(shop):
+def _store_display_name(shop, listing_title: str = ""):
     name = str(getattr(shop, "name", "") or "").strip()
     domain = str(getattr(shop, "domain", "") or "").strip()
     key = str(getattr(shop, "shop_key", "") or "").strip()
     if not name or name.casefold().startswith("request id") or name == key:
         return domain or "未知店铺"
+    if listing_title:
+        norm_name = re.sub(r"[^\w]+", "", name.casefold())
+        norm_title = re.sub(r"[^\w]+", "", str(listing_title).casefold())
+        if len(norm_title) >= 12 and norm_name.startswith(norm_title[:12]):
+            suffix = re.split(r"\s[-|｜·]\s", name)[-1].strip("「」『』[]（）() ")
+            if suffix and suffix != name and len(suffix) <= 100:
+                return suffix
+            return domain or "未知店铺"
     # Some item-page records mistakenly stored "product title - store name" as
     # the store name. Keep only the verified storefront suffix in that case.
     if " - " in name:
@@ -150,8 +135,21 @@ def _store_display_name(shop):
 
 
 def spec_groups(rows):
-    groups, shops, seen = {}, {}, set()
+    prepared = []
     for row in rows:
+        product_name = getattr(row, "product_name", "") or ""
+        shop_key = getattr(row, "shop_key", "") or ""
+        shop_name = getattr(row, "shop_name", "") or ""
+        quality = assess_listing(shop_key, shop_name, row.title or "", row.price,
+                                 product_name, row.spec or {}, row.currency)
+        for field, value in quality.items():
+            if field != "keep": setattr(row, field, value)
+        if not quality["keep"]:
+            continue
+        prepared.append(row)
+
+    groups, shops, seen = {}, {}, set()
+    for row in prepared:
         identity = (row.product_id, row.shop_id, row.url, row.title, row.currency)
         if identity in seen:
             continue
@@ -164,24 +162,47 @@ def spec_groups(rows):
                                     "tier": "+".join(normalized["tier"]) if normalized["tier"] else None,
                                     "period": normalized["period"], "delivery": normalized["delivery"],
                                     "spec": {"duration": normalized["period"], "tier": list(normalized["tier"]),
+                                             "quota": list(normalized["quota"]), "region": list(normalized["region"]),
+                                             "promotion": list(normalized["promotion"]),
                                              "incomplete": normalized["incomplete"]},
                                     "lowest_price": None, "lowest_shop": None,
                                     "shop_count": 0, "listing_count": 0, "_rows": [], "_lowest_order": None})
         g["_rows"].append(row)
-        g["listing_count"] += 1
-        shops.setdefault(key, set()).add(row.shop_id)
-        g["shop_count"] = len(shops[key])
     for g in groups.values():
         price_reasons = assess_price_group([(float(r.price), r.title) for r in g["_rows"]], currency=g["currency"])
+        comparable = [float(r.price) for r, reason in zip(g["_rows"], price_reasons)
+                      if reason is None and not getattr(r, "price_anomaly", False)]
+        median = statistics.median(comparable) if len(comparable) >= 5 else None
         candidates = []
+        kept_rows = []
         for row, reason in zip(g["_rows"], price_reasons):
-            row.price_anomaly = reason is not None
-            row.price_anomaly_reason = reason
-            if reason is not None:
+            already_flagged = bool(getattr(row, "price_anomaly", False))
+            if reason is not None and not getattr(row, "price_anomaly", False):
+                row.price_anomaly = True
+                row.price_anomaly_reason = reason
+            price = float(row.price)
+            median_flag = bool(reason and "同规格中位数" in reason)
+            if median is not None and price < median * 0.30 and median_flag:
+                row.comparison_exclusion = f"低于同档中位数 ¥{median:g} 的 30%，剔除异常价"
+                row.quality_action = "剔除"
                 continue
-            shop = {"name": str(getattr(row, "shop_name", "") or "未知店铺"),
+            if median is not None and price < median * 0.50 and median_flag and not already_flagged:
+                row.price_anomaly = True
+                row.price_anomaly_reason = f"低于同档中位数 ¥{median:g} 的 50%，待人工复核"
+                row.quality_action = "复核"
+                row.quality_review_required = True
+                row.quality_review_reason = row.price_anomaly_reason
+            kept_rows.append(row)
+            if getattr(row, "price_anomaly", False):
+                continue
+            shop = {"name": _store_display_name(SimpleNamespace(name=getattr(row, "shop_name", ""),
+                                                                  domain=getattr(row, "shop_domain", ""),
+                                                                  shop_key=getattr(row, "shop_key", ""))),
                     "public_shop_id": str(row.shop_id) if row.shop_id is not None else None}
             candidates.append((float(row.price), shop["name"].casefold(), shop["public_shop_id"] or "", shop))
+        g["_rows"] = kept_rows
+        g["listing_count"] = len(kept_rows)
+        g["shop_count"] = len({r.shop_id for r in kept_rows})
         if candidates:
             lowest = min(candidates, key=lambda v: v[:3])
             g["lowest_price"] = lowest[0]
@@ -191,7 +212,7 @@ def spec_groups(rows):
         g["n_shops"] = g["shop_count"]
         g.pop("_rows", None)
         g.pop("_lowest_order", None)
-    return sorted(groups.values(), key=representative_rank)
+    return sorted((g for g in groups.values() if g["listing_count"]), key=representative_rank)
 
 
 def public_spec(g):
@@ -204,6 +225,9 @@ def public_spec(g):
 def groups_of(s):
     out: dict[str, list[Product]] = {}
     products = list(s.scalars(select(Product).order_by(Product.sort_order, Product.name)))
+    # Codex offers are migrated into their corresponding ChatGPT tiers. Keep a
+    # legacy product row out of the public directory during idempotent cleanup.
+    products = [p for p in products if p.name != "Codex"]
     present = {p.name for p in products}
     for order, name in enumerate(STANDARD_PRODUCTS):
         if name not in present:
@@ -224,14 +248,26 @@ def fresh_rows(s, ids, names):
                                     .join(latest, ShopCrawlResult.id == latest.c.latest_id)
                                     .where(ShopCrawlResult.result["retry_result"].as_string() == "需验证，暂无报价")))
     shops = {shop.id: shop for shop in s.scalars(select(Shop).where(Shop.id.in_({r.shop_id for r in rows}))) } if rows else {}
-    rows = [r for r in rows if r.shop_id not in validation_only
-            and not comparison_exclusion(r.title, names[r.product_id], r.spec or {}, r.price)]
+    eligible = []
     for r in rows:
+        if r.shop_id in validation_only:
+            continue
         r.product_name = names[r.product_id]
         shop = shops.get(r.shop_id)
-        r.shop_name = _store_display_name(shop) if shop else "未知店铺"
+        r.shop_name = _store_display_name(shop, r.title) if shop else "未知店铺"
         r.shop_key = shop.shop_key if shop else ""
-    return rows
+        r.shop_domain = shop.domain if shop else ""
+        miss = comparison_exclusion(r.title, names[r.product_id], r.spec or {}, r.price)
+        quality = assess_listing(r.shop_key, r.shop_name, r.title, r.price,
+                                 names[r.product_id], r.spec or {}, r.currency)
+        if miss:
+            quality["keep"] = False
+            quality["comparison_exclusion"] = miss
+        for field, value in quality.items():
+            if field != "keep": setattr(r, field, value)
+        if quality["keep"]:
+            eligible.append(r)
+    return eligible
 
 
 _cache: dict = {}
@@ -252,7 +288,7 @@ def product_spec_data(s, ids, names):
     return cached(cache_key, 60, lambda: (lambda rows: (rows, spec_groups(rows)))(fresh_rows(s, ids, names)))
 
 
-def product_price_fields(specs):
+def product_price_fields(specs, product_name: str = ""):
     """One source for the product starting price and representative entry spec."""
     if not specs:
         return {"starting_price": None, "currency": None, "entry_spec": None,
@@ -261,10 +297,23 @@ def product_price_fields(specs):
     if not priced_specs:
         return {"starting_price": None, "currency": None, "entry_spec": None,
                 "entry_price": None, "entry_shop_count": 0}
-    cny = [g for g in priced_specs if g["currency"] == "CNY"]
-    priced = cny or priced_specs
+    # R01: Standard entry profiles prevent accounts, region discounts, and high
+    # tiers from setting the advertised subscription starting price.
+    explicit = [g for g in priced_specs if entry_profile_match(product_name, g)]
+    candidates = explicit
+    if not candidates:
+        candidates = [g for g in priced_specs if g["period"] == "1月"
+                      and not g["spec"].get("region")
+                      and not g["spec"].get("promotion")
+                      and g["delivery"] not in {"共享/车位", "额度包"}]
+    if not candidates:
+        candidates = [g for g in priced_specs if g["delivery"] != "共享/车位"
+                      and g["delivery"] != "额度包" and not g["spec"].get("promotion")]
+    if not candidates:
+        candidates = [g for g in priced_specs if g["delivery"] not in {"共享/车位", "额度包"}]
+    cny = [g for g in candidates if g["currency"] == "CNY"]
+    priced = cny or candidates
     currency = priced[0]["currency"]
-    # The selected entry specification is also the advertised starting price.
     entry = min(priced, key=lambda g: (g["lowest_price"], representative_rank(g)))
     starting_price = entry["lowest_price"]
     entry_spec = {"key": entry["key"], "name": entry["label"], "label": entry["label"], "tier": entry["tier"],
@@ -277,7 +326,7 @@ def tool_summary(s, key, members, page=1, page_size=50, include_specs=True):
     ids = [m.id for m in members]
     names = {m.id: m.name for m in members}
     rows, specs = product_spec_data(s, ids, names)
-    price_fields = product_price_fields(specs)
+    price_fields = product_price_fields(specs, key)
     status, sold = None, []
     if not rows or price_fields["starting_price"] is None:
         old = s.scalars(select(Listing).where(Listing.product_id.in_(ids), Listing.active.is_(False))).all()
@@ -357,12 +406,12 @@ def catalog_specs(name: str, page: int = Query(1, ge=1), page_size: int = Query(
             raise HTTPException(404, "商品不存在")
         ids = [m.id for m in members]
         _, groups = product_spec_data(s, ids, {m.id: m.name for m in members})
-        price_fields = product_price_fields(groups)
+        price_fields = product_price_fields(groups, name)
         total = len(groups)
         total_pages = (total + page_size - 1) // page_size
         start = (page - 1) * page_size
         items = [public_spec(g) for g in groups[start:start + page_size]]
-        return ctx.seal({"product": name, "updated_at": last_update(s), "n_specs": total,
+        return ctx.seal({"product": name, "updated_at": last_update(s), "n_specs": total, "total": total,
                          "page": page, "page_size": page_size, "total_pages": total_pages,
                          "starting_price": price_fields["starting_price"], "currency": price_fields["currency"],
                          "entry_spec": price_fields["entry_spec"], "entry_price": price_fields["entry_price"],
@@ -476,13 +525,13 @@ def public_crawl_status(result):
         return "需验证"
     status = str(result.get("status") or "").lower()
     reason = str(result.get("reason") or "").lower()
-    if status == "skipped": return "已跳过"
-    if status == "success": return "采集成功"
-    if status == "empty": return "无报价"
     if re.search(r"captcha|cloudflare|验证码|人机|访问验证|滑块", reason): return "需验证"
     if re.search(r"登录|登陆|login|401|403|unauthorized", reason): return "需要登录"
     if re.search(r"关闭|打烊|不存在|404", reason): return "店铺关闭"
     if re.search(r"timeout|timed out|连接|dns|502|503|504|connection", reason): return "连接失败"
+    if status == "skipped": return "已跳过"
+    if status == "success": return "采集成功"
+    if status == "empty": return "无报价"
     if status == "failed": return "结构未适配"
     return "未知"
 

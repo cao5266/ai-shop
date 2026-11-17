@@ -128,6 +128,7 @@ class CatalogApiTests(unittest.TestCase):
     def test_catalog_specs_pages_with_default_and_maximum_page_size(self):
         first = self.client.get("/api/v4/catalog/Cursor/specs").json()
         self.assertEqual(first["n_specs"], 104)
+        self.assertEqual(first["total"], 104)
         self.assertEqual(first["page"], 1)
         self.assertEqual(first["page_size"], 50)
         self.assertEqual(first["total_pages"], 3)
@@ -212,7 +213,7 @@ class CatalogApiTests(unittest.TestCase):
             ({"duration": "30天"}, "1月"), ({"duration": "月卡"}, "1月"),
             ({"duration": "3个月"}, "3月"), ({"duration": "一年"}, "1年"),
             ({"duration": "90天"}, "3月"), ({"duration": "终身"}, "永久"),
-            ({"duration": "5次卡"}, "5次"), ({}, "未注明周期"),
+            ({"duration": "5次卡"}, "5次"), ({}, "时长未注明"),
         ]
         for spec, expected in cases:
             with self.subTest(spec=spec):
